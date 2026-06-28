@@ -202,11 +202,16 @@ function tickMusic() {
 }
 
 function initAudio() {
-  if (audioCtx) return;
+  if (audioCtx) {
+    // iOS suspends the context between gestures — always try to resume
+    audioCtx.resume();
+    return;
+  }
   const Ctx  = window.AudioContext || window.webkitAudioContext;
   audioCtx   = new Ctx();
+  audioCtx.resume(); // required on iOS Safari
   masterGain = audioCtx.createGain();
-  masterGain.gain.setValueAtTime(0.5, audioCtx.currentTime);
+  masterGain.gain.setValueAtTime(muted ? 0 : 0.5, audioCtx.currentTime);
   masterGain.connect(audioCtx.destination);
   const t0 = audioCtx.currentTime + 0.05;
   melTime = bassTime = pulTime = t0;
@@ -214,7 +219,9 @@ function initAudio() {
 
 function setMute(m) {
   muted = m;
-  if (masterGain) masterGain.gain.setValueAtTime(muted ? 0 : 0.5, audioCtx.currentTime);
+  if (!audioCtx) return;
+  audioCtx.resume(); // wake suspended context on iOS when user unmutes
+  masterGain.gain.setValueAtTime(muted ? 0 : 0.5, audioCtx.currentTime);
   document.getElementById('mute-btn').textContent = muted ? '🔇' : '🔊';
 }
 
