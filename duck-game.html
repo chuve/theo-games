@@ -1,0 +1,669 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
+  <title>Duck Catcher!</title>
+  <link href="https://fonts.googleapis.com/css2?family=Press+Start+2P&display=swap" rel="stylesheet">
+  <style>
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+    body { background: #0d0d2b; overflow: hidden; cursor: none; touch-action: none; }
+    canvas { display: block; }
+    #hud {
+      position: fixed;
+      top: 0; left: 0; right: 0;
+      padding: 14px 0;
+      text-align: center;
+      font-family: 'Press Start 2P', monospace;
+      font-size: clamp(12px, 3.5vw, 22px);
+      color: #fff;
+      text-shadow: 3px 3px 0 #000;
+      pointer-events: none;
+      z-index: 10;
+    }
+    #score { color: #FFD700; }
+    #mute-btn {
+      position: fixed;
+      top: 10px; right: 14px;
+      background: rgba(0,0,0,0.55);
+      border: 2px solid rgba(255,255,255,0.7);
+      color: #fff;
+      font-size: 18px;
+      padding: 5px 10px;
+      cursor: pointer;
+      z-index: 20;
+      border-radius: 4px;
+      font-family: 'Press Start 2P', monospace;
+      line-height: 1;
+    }
+    #mute-btn:hover { background: rgba(255,255,255,0.15); }
+  </style>
+</head>
+<body>
+  <div id="hud">&#x1F41E; CAUGHT: <span id="score">0</span></div>
+  <button id="mute-btn" title="Toggle sound (M)">&#x1F50A;</button>
+  <canvas id="game"></canvas>
+
+<script>
+const canvas = document.getElementById('game');
+const ctx    = canvas.getContext('2d');
+const scoreEl = document.getElementById('score');
+
+let W = 0, H = 0;
+
+// ─── AUDIO (Web Audio API — 8-bit chiptune) ──────────────────────────────────
+let audioCtx   = null;
+let masterGain = null;
+let muted      = false;
+
+// Note frequencies (Hz)
+const C3=130.81,D3=146.83,E3=164.81,F3=174.61,G3=196.00,A3=220.00,B3=246.94;
+const C4=261.63,D4=293.66,E4=329.63,F4=349.23,G4=392.00,A4=440.00,B4=493.88;
+const C5=523.25,D5=587.33,E5=659.26,F5=698.46,G5=783.99,A5=880.00,B5=987.77;
+const R = 0; // rest
+
+const BPM  = 160;
+const BEAT = 60 / BPM;
+
+// Cheerful 8-bit melody loop (freq, beat-length)
+const MELODY = [
+  // Phrase A — bouncy intro
+  [E5,0.5],[D5,0.5],[C5,1],  [G5,0.5],[E5,0.5],[C5,1],
+  [D5,0.5],[E5,0.5],[F5,0.5],[E5,0.5],[D5,1],  [R,0.5],
+  // Phrase B
+  [G5,0.5],[F5,0.5],[E5,1],  [C5,0.5],[E5,0.5],[G5,1],
+  [A5,0.5],[G5,0.5],[E5,0.5],[D5,0.5],[C5,2],
+  // Phrase C — bridge
+  [E5,0.5],[G5,0.5],[A5,1],  [G5,0.5],[E5,0.5],[D5,1],
+  [C5,0.5],[D5,0.5],[E5,0.5],[D5,0.5],[C5,1],  [R,0.5],
+  // Phrase D — resolution
+  [C5,0.5],[E5,0.5],[G5,0.5],[A5,0.5],[G5,1],  [E5,1],
+  [D5,0.5],[C5,0.5],[D5,0.5],[E5,0.5],[C5,2],  [R,0.5],
+];
+
+// Bass / harmony (triangle wave)
+const BASS = [
+  [C3,1],[C3,1],[G3,1],[G3,1],
+  [A3,1],[A3,1],[F3,1],[G3,1],
+  [C3,1],[C3,1],[G3,1],[E3,1],
+  [F3,1],[G3,1],[C3,1],[R,1],
+];
+
+// Rhythmic "blip" pulse on off-beats (adds chiptune energy)
+const PULSE = [
+  [R,1],[C5,0.25],[R,0.75],[R,1],[G4,0.25],[R,0.75],
+  [R,1],[A4,0.25],[R,0.75],[R,1],[E4,0.25],[R,0.75],
+];
+
+let melIdx=0,  melTime=0;
+let bassIdx=0, bassTime=0;
+let pulIdx=0,  pulTime=0;
+const LOOKAHEAD = 0.1;
+
+function schedOsc(freq, type, t, dur, vol) {
+  if (!audioCtx || freq === 0) return;
+  const osc  = audioCtx.createOscillator();
+  const gain = audioCtx.createGain();
+  osc.connect(gain);
+  gain.connect(masterGain);
+  osc.type = type;
+  osc.frequency.setValueAtTime(freq, t);
+  gain.gain.setValueAtTime(vol, t);
+  gain.gain.exponentialRampToValueAtTime(0.0001, t + dur * 0.88);
+  osc.start(t);
+  osc.stop(t + dur);
+}
+
+function tickMusic() {
+  if (!audioCtx) return;
+  const now = audioCtx.currentTime;
+  while (melTime < now + LOOKAHEAD) {
+    const [f, b] = MELODY[melIdx % MELODY.length];
+    schedOsc(f, 'square', melTime, b * BEAT, 0.10);
+    melTime += b * BEAT; melIdx++;
+  }
+  while (bassTime < now + LOOKAHEAD) {
+    const [f, b] = BASS[bassIdx % BASS.length];
+    schedOsc(f, 'triangle', bassTime, b * BEAT, 0.07);
+    bassTime += b * BEAT; bassIdx++;
+  }
+  while (pulTime < now + LOOKAHEAD) {
+    const [f, b] = PULSE[pulIdx % PULSE.length];
+    schedOsc(f, 'square', pulTime, b * BEAT, 0.05);
+    pulTime += b * BEAT; pulIdx++;
+  }
+}
+
+function initAudio() {
+  if (audioCtx) return;
+  const Ctx  = window.AudioContext || window.webkitAudioContext;
+  audioCtx   = new Ctx();
+  masterGain = audioCtx.createGain();
+  masterGain.gain.setValueAtTime(0.5, audioCtx.currentTime);
+  masterGain.connect(audioCtx.destination);
+  const t0 = audioCtx.currentTime + 0.05;
+  melTime = bassTime = pulTime = t0;
+}
+
+function setMute(m) {
+  muted = m;
+  if (masterGain) masterGain.gain.setValueAtTime(muted ? 0 : 0.5, audioCtx.currentTime);
+  document.getElementById('mute-btn').textContent = muted ? '🔇' : '🔊';
+}
+
+// Mute button + M key
+document.getElementById('mute-btn').addEventListener('click', () => {
+  if (!audioCtx) initAudio();
+  setMute(!muted);
+});
+document.addEventListener('keydown', e => {
+  if (e.key === 'm' || e.key === 'M') {
+    if (!audioCtx) initAudio();
+    setMute(!muted);
+  }
+});
+
+function playCatch() {
+  if (!audioCtx) return;
+  const now = audioCtx.currentTime;
+  // Three-step ascending blip (classic "item get" sound)
+  schedOsc(440,  'square', now,        0.07, 0.28);
+  schedOsc(660,  'square', now + 0.07, 0.07, 0.28);
+  schedOsc(880,  'square', now + 0.14, 0.12, 0.28);
+}
+
+// ─── RESIZE ──────────────────────────────────────────────────────────────────
+function resize() {
+  W = canvas.width  = window.innerWidth;
+  H = canvas.height = window.innerHeight;
+  buildStars();
+}
+window.addEventListener('resize', resize);
+
+// ─── BACKGROUND STARS ────────────────────────────────────────────────────────
+let stars = [];
+function buildStars() {
+  stars = Array.from({ length: 100 }, () => ({
+    x: Math.random() * W,
+    y: Math.random() * H * 0.85,
+    r: Math.random() < 0.25 ? 2 : 1,
+    phase: Math.random() * Math.PI * 2,
+  }));
+}
+function drawStars(t) {
+  for (const s of stars) {
+    const a = 0.35 + 0.45 * Math.sin(t * 0.0015 + s.phase);
+    ctx.fillStyle = `rgba(255,255,255,${a.toFixed(2)})`;
+    ctx.fillRect(s.x, s.y, s.r, s.r);
+  }
+}
+
+// ─── GROUND ──────────────────────────────────────────────────────────────────
+function drawGround() {
+  const G = 36;
+  // Dirt
+  ctx.fillStyle = '#6B3A1F';
+  ctx.fillRect(0, H - G * 0.35, W, G * 0.35);
+  // Grass base
+  ctx.fillStyle = '#2E6B1A';
+  ctx.fillRect(0, H - G, W, G * 0.65);
+  // Pixel grass tufts
+  ctx.fillStyle = '#3E8A22';
+  for (let x = 0; x < W; x += 16) {
+    const h = 6 + (Math.floor(x / 8) % 3) * 4;
+    ctx.fillRect(x, H - G - h + 6, 8, h);
+  }
+  // Bright strip at top of grass
+  ctx.fillStyle = '#52A82E';
+  ctx.fillRect(0, H - G, W, 4);
+}
+
+// ─── DUCK ────────────────────────────────────────────────────────────────────
+const duck = { x: 200, y: 300, tx: 200, ty: 300 };
+
+function drawDuck(x, y) {
+  ctx.save();
+  ctx.translate(Math.round(x), Math.round(y));
+
+  // Shadow
+  ctx.fillStyle = 'rgba(0,0,0,0.20)';
+  ctx.beginPath();
+  ctx.ellipse(2, 32, 30, 7, 0, 0, Math.PI * 2);
+  ctx.fill();
+
+  // ── Body ──────────────────────────────────────────────────────────────────
+  ctx.fillStyle = '#FFD700';
+  ctx.beginPath();
+  ctx.ellipse(0, 14, 33, 23, 0, 0, Math.PI * 2);
+  ctx.fill();
+
+  // Tail bump (back-left, curves upward like rubber duck)
+  ctx.beginPath();
+  ctx.ellipse(-28, 1, 11, 9, -0.55, 0, Math.PI * 2);
+  ctx.fill();
+
+  // Belly shading (slightly darker to give roundness)
+  ctx.fillStyle = '#E8B800';
+  ctx.beginPath();
+  ctx.ellipse(-4, 20, 18, 11, -0.15, 0, Math.PI * 2);
+  ctx.fill();
+
+  // ── Head ──────────────────────────────────────────────────────────────────
+  ctx.fillStyle = '#FFD700';
+  ctx.beginPath();
+  ctx.arc(8, -11, 22, 0, Math.PI * 2);
+  ctx.fill();
+
+  // Head highlight (top-left bright spot for rubber-toy sheen)
+  ctx.fillStyle = '#FFF060';
+  ctx.beginPath();
+  ctx.ellipse(2, -20, 9, 6, -0.6, 0, Math.PI * 2);
+  ctx.fill();
+
+  // ── Beak ──────────────────────────────────────────────────────────────────
+  // Upper beak
+  ctx.fillStyle = '#FF8C00';
+  ctx.beginPath();
+  ctx.moveTo(23, -16);
+  ctx.quadraticCurveTo(44, -13, 42, -8);
+  ctx.quadraticCurveTo(28, -9, 23, -10);
+  ctx.closePath();
+  ctx.fill();
+
+  // Lower beak
+  ctx.fillStyle = '#D96B00';
+  ctx.beginPath();
+  ctx.moveTo(23, -10);
+  ctx.quadraticCurveTo(40, -8, 38, -2);
+  ctx.quadraticCurveTo(26, -2, 23, -5);
+  ctx.closePath();
+  ctx.fill();
+
+  // Beak crease (line between upper & lower)
+  ctx.strokeStyle = '#C05A00';
+  ctx.lineWidth = 1.5;
+  ctx.beginPath();
+  ctx.moveTo(23, -10);
+  ctx.quadraticCurveTo(38, -9, 42, -8);
+  ctx.stroke();
+
+  // Beak highlight
+  ctx.fillStyle = '#FFA830';
+  ctx.beginPath();
+  ctx.ellipse(33, -14, 5, 2.5, -0.2, 0, Math.PI * 2);
+  ctx.fill();
+
+  // ── Eyes ──────────────────────────────────────────────────────────────────
+  // White sclera
+  ctx.fillStyle = '#FFFFFF';
+  ctx.beginPath();
+  ctx.arc(17, -17, 8, 0, Math.PI * 2);
+  ctx.fill();
+
+  // Pupil
+  ctx.fillStyle = '#111111';
+  ctx.beginPath();
+  ctx.arc(19, -16, 5, 0, Math.PI * 2);
+  ctx.fill();
+
+  // Shine highlight
+  ctx.fillStyle = '#FFFFFF';
+  ctx.beginPath();
+  ctx.arc(22, -19, 2, 0, Math.PI * 2);
+  ctx.fill();
+
+  ctx.restore();
+}
+
+// ─── BUG SPRITES ─────────────────────────────────────────────────────────────
+// Top-down pixel art. Each char = 1 block (S px). Space = transparent.
+const SPRITES = [
+
+  // ── 0: Ladybug (11 × 10) ──────────────────────────────────────────────────
+  {
+    pix: [
+      '   KKKKK   ',  //  3+5+3 = 11
+      '  KRRRRRK  ',  //  2+1+5+1+2
+      'LLKRRRRRKLL',  //  2+1+5+1+2  (legs L on each side)
+      'LLKRDRDRKLL',  //  dots D in body
+      '  KRRRRRK  ',
+      'LLKRDRDRKLL',
+      '  KRRRRRK  ',
+      'LLKRRRRRKLL',
+      '  KRRRRRK  ',
+      '   KKKKK   ',
+    ],
+    pal: { K:'#1a1a1a', R:'#CC2200', D:'#1a1a1a', L:'#666666' },
+  },
+
+  // ── 1: Bee (13 × 10) ──────────────────────────────────────────────────────
+  {
+    pix: [
+      '    KKKKK    ',  //  4+5+4 = 13  (head)
+      '   KYYYYYK   ',  //  3+1+5+1+3
+      'WWWKYYYYYKWWW',  //  3+1+5+1+3  (wings W)
+      'WWWKYBBBYKWWW',  //  Y+3B+Y = body stripes
+      'WWWKYYYYYKWWW',
+      'WWWKYBBBYKWWW',
+      'WWWKYYYYYKWWW',
+      ' WWKYYYYYKWW ',  //  1+2+1+5+1+2+1  (wings taper)
+      '   KYYYYYK   ',
+      '    KOOOK    ',  //  4+1+3+1+4  (stinger O)
+    ],
+    pal: { K:'#2a2a2a', Y:'#FFD700', B:'#7A4010', W:'#C8E8FF', O:'#FF6600' },
+  },
+
+  // ── 2: Dragonfly (13 × 12) ────────────────────────────────────────────────
+  {
+    pix: [
+      '     KTK     ',  //  5+1+1+1+5 = 13  (head, T=teal)
+      'WWWWWKTKWWWWW',  //  5+1+1+1+5  (upper wing pair)
+      'WWWWWKTKWWWWW',
+      '     KTK     ',  //  gap between wing pairs
+      ' WWWWKTKWWWW ',  //  1+4+1+1+1+4+1  (lower wing pair, smaller)
+      ' WWWWKTKWWWW ',
+      '     KTK     ',  //  tail begins
+      '     KTK     ',
+      '      T      ',  //  6+1+6  (tail narrows to 1)
+      '      T      ',
+      '      T      ',
+      '      T      ',
+    ],
+    pal: { K:'#1a1a1a', T:'#00AACC', W:'#B8ECFF' },
+  },
+
+  // ── 3: Green beetle (11 × 9) ──────────────────────────────────────────────
+  {
+    pix: [
+      '   KKKKK   ',  //  3+5+3 = 11  (head)
+      '  KGGGGGK  ',  //  2+1+5+1+2
+      'LLKGGGGGKLL',  //  legs
+      '  KDGGGDK  ',  //  2+1+D+3+D+1+2  wing line detail (D=dark)
+      'LLKGGGGGKLL',
+      '  KDGGGDK  ',
+      'LLKGGGGGKLL',
+      '  KGGGGGK  ',
+      '   KKKKK   ',
+    ],
+    pal: { K:'#1a1a1a', G:'#44CC44', L:'#555555', D:'#228822' },
+  },
+
+  // ── 4: Butterfly (13 × 11) ────────────────────────────────────────────────
+  {
+    pix: [
+      '     BBB     ',  //  5+3+5 = 13  (body top, B=dark body)
+      '  PPPBBBPPP  ',  //  2+3+3+3+2
+      ' PPPPBBBPPPP ',  //  1+4+3+4+1
+      'PPPPPBBBPPPPP',  //  5+3+5  (widest upper wings)
+      'PPPPPBBBPPPPP',
+      ' PPPPBBBPPPP ',  //  narrowing
+      '  PPPBBBPPP  ',  //  lower wings
+      '  PPPBBBPPP  ',
+      '   PPBBBPP   ',  //  3+2+3+2+3
+      '    PBBBP    ',  //  4+1+3+1+4
+      '     BBB     ',  //  body bottom
+    ],
+    pal: { B:'#5A1FA0', P:'#FF88CC' },
+  },
+];
+
+function drawSprite(pix, pal, cx, cy) {
+  const S = 4; // pixel block = 4px
+  const rows = pix.length;
+  const cols = pix[0].length;
+  const ox = Math.round(cx - (cols * S) / 2);
+  const oy = Math.round(cy - (rows * S) / 2);
+  for (let r = 0; r < rows; r++) {
+    for (let c = 0; c < cols; c++) {
+      const ch = pix[r][c];
+      if (ch === ' ') continue;
+      ctx.fillStyle = pal[ch] || '#ff00ff';
+      ctx.fillRect(ox + c * S, oy + r * S, S, S);
+    }
+  }
+}
+
+// ─── BUGS ────────────────────────────────────────────────────────────────────
+let bugs  = [];
+let score = 0;
+
+const MAX_BUGS      = 22;
+const BUG_MAX_SPEED = 1.4;
+const SPAWN_MS      = 2800;
+let   lastSpawn     = -99999;
+
+function makeBug() {
+  return {
+    x: 80 + Math.random() * (W - 160),
+    y: 80 + Math.random() * (H - 200),
+    vx: (Math.random() - 0.5) * BUG_MAX_SPEED,
+    vy: (Math.random() - 0.5) * BUG_MAX_SPEED,
+    type: Math.floor(Math.random() * SPRITES.length),
+    wobble: Math.random() * Math.PI * 2,
+  };
+}
+
+function initBugs() {
+  bugs = [];
+  for (let i = 0; i < 10; i++) bugs.push(makeBug());
+}
+
+function updateBugs(now) {
+  if (now - lastSpawn > SPAWN_MS && bugs.length < MAX_BUGS) {
+    bugs.push(makeBug());
+    lastSpawn = now;
+  }
+  for (const b of bugs) {
+    // Gentle random jitter
+    b.vx += (Math.random() - 0.5) * 0.3;
+    b.vy += (Math.random() - 0.5) * 0.3;
+    // Clamp speed
+    const spd = Math.hypot(b.vx, b.vy);
+    if (spd > BUG_MAX_SPEED) {
+      b.vx = b.vx / spd * BUG_MAX_SPEED;
+      b.vy = b.vy / spd * BUG_MAX_SPEED;
+    }
+    b.x += b.vx;
+    b.y += b.vy;
+    b.wobble += 0.07;
+    // Wall bounce
+    const M = 50;
+    if (b.x < M)     { b.x = M;     b.vx =  Math.abs(b.vx); }
+    if (b.x > W - M) { b.x = W - M; b.vx = -Math.abs(b.vx); }
+    if (b.y < 70)     { b.y = 70;     b.vy =  Math.abs(b.vy); }
+    if (b.y > H - 70) { b.y = H - 70; b.vy = -Math.abs(b.vy); }
+  }
+}
+
+function drawBugs() {
+  for (const b of bugs) {
+    const sp = SPRITES[b.type];
+    ctx.save();
+    ctx.translate(b.x, b.y);
+    ctx.rotate(Math.sin(b.wobble) * 0.18);
+    drawSprite(sp.pix, sp.pal, 0, 0);
+    ctx.restore();
+  }
+}
+
+// ─── COLLISION ───────────────────────────────────────────────────────────────
+const CATCH_R = 42;
+
+function checkCollisions() {
+  for (let i = bugs.length - 1; i >= 0; i--) {
+    const b = bugs[i];
+    if (Math.hypot(duck.x - b.x, duck.y - b.y) < CATCH_R) {
+      bugs.splice(i, 1);
+      score++;
+      scoreEl.textContent = score;
+      burst(b.x, b.y);
+      popText(b.x, b.y);
+      playCatch();
+      // Immediately spawn a replacement so screen stays lively
+      if (bugs.length < 8) bugs.push(makeBug());
+    }
+  }
+}
+
+// ─── PARTICLES ───────────────────────────────────────────────────────────────
+let particles = [];
+const BURST_COLORS = ['#FFD700','#FF69B4','#00FFFF','#FF4500','#ADFF2F','#FF8C00','#FFFFFF'];
+
+function burst(x, y) {
+  for (let i = 0; i < 12; i++) {
+    const angle = (i / 12) * Math.PI * 2 + Math.random() * 0.5;
+    const spd   = 2.5 + Math.random() * 4.5;
+    particles.push({
+      x, y,
+      vx: Math.cos(angle) * spd,
+      vy: Math.sin(angle) * spd - 1,
+      life: 1,
+      decay: 0.022 + Math.random() * 0.018,
+      color: BURST_COLORS[Math.floor(Math.random() * BURST_COLORS.length)],
+      sz: 4 + (Math.floor(Math.random() * 3)) * 2,
+    });
+  }
+}
+
+function updateParticles() {
+  for (let i = particles.length - 1; i >= 0; i--) {
+    const p = particles[i];
+    p.x  += p.vx;
+    p.y  += p.vy;
+    p.vy += 0.18; // gravity
+    p.life -= p.decay;
+    if (p.life <= 0) particles.splice(i, 1);
+  }
+}
+
+function drawParticles() {
+  for (const p of particles) {
+    ctx.globalAlpha = Math.max(0, p.life);
+    ctx.fillStyle = p.color;
+    ctx.fillRect(Math.round(p.x), Math.round(p.y), p.sz, p.sz);
+  }
+  ctx.globalAlpha = 1;
+}
+
+// ─── POP TEXT ────────────────────────────────────────────────────────────────
+const QUACKS = ['QUACK!', 'GOT IT!', 'YAY!', 'WOW!', 'SPLAT!'];
+let pops = [];
+
+function popText(x, y) {
+  pops.push({
+    x, y,
+    text: QUACKS[Math.floor(Math.random() * QUACKS.length)],
+    life: 1,
+  });
+}
+
+function updatePops() {
+  for (let i = pops.length - 1; i >= 0; i--) {
+    pops[i].y   -= 1.8;
+    pops[i].life -= 0.022;
+    if (pops[i].life <= 0) pops.splice(i, 1);
+  }
+}
+
+function drawPops() {
+  ctx.save();
+  ctx.textAlign = 'center';
+  ctx.font = `bold 13px "Press Start 2P", monospace`;
+  for (const p of pops) {
+    const a = Math.max(0, p.life);
+    ctx.globalAlpha = a;
+    ctx.strokeStyle = '#000';
+    ctx.lineWidth   = 4;
+    ctx.strokeText(p.text, p.x, p.y);
+    ctx.fillStyle   = '#FFD700';
+    ctx.fillText(p.text, p.x, p.y);
+  }
+  ctx.globalAlpha = 1;
+  ctx.restore();
+}
+
+// ─── INPUT ───────────────────────────────────────────────────────────────────
+const keys = {};
+document.addEventListener('keydown', e => { keys[e.key] = true; });
+document.addEventListener('keyup',   e => { keys[e.key] = false; });
+
+const ARROW_SPEED = 7; // px per frame when holding arrow key
+
+function applyArrowKeys() {
+  if (keys['ArrowLeft']  || keys['a'] || keys['A']) duck.tx = Math.max(0,  duck.tx - ARROW_SPEED);
+  if (keys['ArrowRight'] || keys['d'] || keys['D']) duck.tx = Math.min(W,  duck.tx + ARROW_SPEED);
+  if (keys['ArrowUp']    || keys['w'] || keys['W']) duck.ty = Math.max(0,  duck.ty - ARROW_SPEED);
+  if (keys['ArrowDown']  || keys['s'] || keys['S']) duck.ty = Math.min(H,  duck.ty + ARROW_SPEED);
+}
+
+function setTarget(cx, cy) {
+  duck.tx = cx;
+  duck.ty = cy;
+}
+
+canvas.addEventListener('mousemove', e => {
+  initAudio();
+  const r = canvas.getBoundingClientRect();
+  setTarget(e.clientX - r.left, e.clientY - r.top);
+});
+canvas.addEventListener('touchmove', e => {
+  e.preventDefault();
+  initAudio();
+  const r   = canvas.getBoundingClientRect();
+  const t   = e.touches[0];
+  setTarget(t.clientX - r.left, t.clientY - r.top);
+}, { passive: false });
+canvas.addEventListener('touchstart', e => {
+  e.preventDefault();
+  initAudio();
+  const r = canvas.getBoundingClientRect();
+  const t = e.touches[0];
+  setTarget(t.clientX - r.left, t.clientY - r.top);
+}, { passive: false });
+
+// ─── GAME LOOP ───────────────────────────────────────────────────────────────
+function loop(now) {
+  // Clear
+  ctx.fillStyle = '#0d0d2b';
+  ctx.fillRect(0, 0, W, H);
+
+  // Background
+  drawStars(now);
+  drawGround();
+
+  // Bugs
+  updateBugs(now);
+  drawBugs();
+
+  // Arrow keys nudge the target each frame
+  applyArrowKeys();
+
+  // Duck follows cursor with smooth lerp
+  duck.x += (duck.tx - duck.x) * 0.22;
+  duck.y += (duck.ty - duck.y) * 0.22;
+
+  // Collisions
+  checkCollisions();
+
+  // FX
+  updateParticles();
+  drawParticles();
+
+  // Duck on top
+  drawDuck(duck.x, duck.y);
+
+  // Pop text
+  updatePops();
+  drawPops();
+
+  tickMusic();
+  requestAnimationFrame(loop);
+}
+
+// ─── INIT ────────────────────────────────────────────────────────────────────
+resize();
+initBugs();
+requestAnimationFrame(loop);
+</script>
+</body>
+</html>
