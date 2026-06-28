@@ -582,6 +582,62 @@ function drawPops() {
   ctx.restore();
 }
 
+// ─── DIRECTION ARROWS ────────────────────────────────────────────────────────
+let arrowT = 0;
+
+function drawDirectionArrows(x, y) {
+  arrowT += 0.1;
+  const pulse   = 0.65 + 0.35 * Math.sin(arrowT * 5);
+  const DIST    = 72;   // px from duck centre to arrow centre
+  const S       = 5;    // pixel-block size for the arrow
+
+  // Pixel triangle pointing RIGHT before rotation:
+  //  col  -1   0   1
+  //             .   .   X   row -2
+  //             .   X   X   row -1
+  //             X   X   X   row  0
+  //             .   X   X   row  1
+  //             .   .   X   row  2
+  const PX = [
+    [ 1,-2],
+    [ 0,-1],[ 1,-1],
+    [-1, 0],[ 0, 0],[ 1, 0],
+    [ 0, 1],[ 1, 1],
+    [ 1, 2],
+  ];
+
+  const DIRS = [
+    { dx: 1,  dy: 0,  ks: ['ArrowRight','d','D'] },
+    { dx:-1,  dy: 0,  ks: ['ArrowLeft', 'a','A'] },
+    { dx: 0,  dy:-1,  ks: ['ArrowUp',   'w','W'] },
+    { dx: 0,  dy: 1,  ks: ['ArrowDown', 's','S'] },
+  ];
+
+  for (const d of DIRS) {
+    if (!d.ks.some(k => keys[k])) continue;
+
+    ctx.save();
+    ctx.translate(x + d.dx * DIST, y + d.dy * DIST);
+    ctx.rotate(Math.atan2(d.dy, d.dx));
+    ctx.globalAlpha = pulse;
+
+    // Glow
+    ctx.shadowColor = '#FFD700';
+    ctx.shadowBlur  = 18;
+    ctx.fillStyle   = '#FFD700';
+    for (const [c,r] of PX) ctx.fillRect(c*S, r*S - S/2, S, S);
+
+    // Bright tip highlight
+    ctx.shadowBlur  = 0;
+    ctx.fillStyle   = '#FFFFF0';
+    ctx.fillRect(S, -2*S - S/2, S, S);
+
+    ctx.restore();
+  }
+  ctx.globalAlpha = 1;
+  ctx.shadowBlur  = 0;
+}
+
 // ─── INPUT ───────────────────────────────────────────────────────────────────
 const keys = {};
 document.addEventListener('keydown', e => { keys[e.key] = true; });
@@ -651,6 +707,7 @@ function loop(now) {
 
   // Duck on top
   drawDuck(duck.x, duck.y);
+  drawDirectionArrows(duck.x, duck.y);
 
   // Pop text
   updatePops();
