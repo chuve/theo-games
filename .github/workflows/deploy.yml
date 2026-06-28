@@ -8,8 +8,34 @@ jobs:
   deploy:
     runs-on: ubuntu-latest
     steps:
-      - name: Trigger Coolify deployment
+      - name: Trigger deployment
+        id: trigger
         run: |
-          curl -fsSL -X GET \
+          RESPONSE=$(curl -fsSL -X GET \
             "https://coolify.chuve.co/api/v1/deploy?uuid=${{ secrets.COOLIFY_APP_UUID }}&force=false" \
-            -H "Authorization: Bearer ${{ secrets.COOLIFY_TOKEN }}"
+            -H "Authorization: Bearer ${{ secrets.COOLIFY_TOKEN }}")
+          echo "$RESPONSE"
+          DEPLOY_UUID=$(echo "$RESPONSE" | jq -r '.deployments[0].deployment_uuid')
+          echo "deploy_uuid=$DEPLOY_UUID" >> "$GITHUB_OUTPUT"
+
+      - name: Wait for deployment to finish
+        run: |
+          UUID="${{ steps.trigger.outputs.deploy_uuid }}"
+          TIMEOUT=300   # 5 minutes max
+          ELAPSED=0
+          echo "Polling deployment $UUID ..."
+          while [ $ELAPSED -lt $TIMEOUT ]; do
+            STATUS=$(curl -fsSL \
+              "https://coolify.chuve.co/api/v1/deployments/$UUID" \
+              -H "Authorization: Bearer ${{ secrets.COOLIFY_TOKEN }}" \
+              | jq -r '.status')
+            echo "  status: $STATUS"
+            case "$STATUS" in
+              finished)  echo "Deployment succeeded."; exit 0 ;;
+              failed)    echo "Deployment failed!";    exit 1 ;;
+              cancelled) echo "Deployment cancelled."; exit 1 ;;
+            esac
+            sleep 5
+            ELAPSED=$((ELAPSED + 5))
+          done
+          echo "Timed out waiting for deployment."; exit 1
