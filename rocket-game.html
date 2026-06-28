@@ -1,0 +1,603 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
+<title>Build a Rocket! 🚀</title>
+<style>
+  * { box-sizing: border-box; margin: 0; padding: 0; touch-action: manipulation; }
+
+  body {
+    background: #0a0a2e;
+    min-height: 100vh;
+    overflow: hidden;
+    font-family: 'Arial Rounded MT Bold', Arial, sans-serif;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+  }
+
+  #stars-bg {
+    position: fixed;
+    inset: 0;
+    pointer-events: none;
+    z-index: 0;
+  }
+
+  #title {
+    color: #fff;
+    font-size: clamp(1.8rem, 5vw, 3rem);
+    text-align: center;
+    padding: 12px 0 4px;
+    z-index: 1;
+    text-shadow: 0 0 20px #88f;
+    letter-spacing: 2px;
+  }
+
+  #game-area {
+    position: relative;
+    width: 100%;
+    flex: 1;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    z-index: 1;
+  }
+
+  #rocket-stage {
+    position: relative;
+    width: 220px;
+    height: 340px;
+    margin: 16px auto 0;
+    transform: scale(1.2);
+    transform-origin: top center;
+  }
+
+  .rocket-slot {
+    position: absolute;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    transition: opacity 0.3s;
+  }
+
+  .rocket-slot svg { filter: drop-shadow(0 0 6px rgba(255,255,255,0.2)); }
+  .rocket-slot.empty svg { opacity: 0.18; }
+  .rocket-slot.filled svg { opacity: 1; }
+  .rocket-slot.filled { animation: popIn 0.3s ease-out; }
+
+  @keyframes popIn {
+    0% { transform: scale(0.5); }
+    70% { transform: scale(1.15); }
+    100% { transform: scale(1); }
+  }
+
+  #pieces-area {
+    display: flex;
+    flex-wrap: wrap;
+    justify-content: center;
+    gap: 18px;
+    padding: 28px 16px 24px;
+    z-index: 1;
+    min-height: 160px;
+    margin-top: 50px;
+  }
+
+  .piece-btn {
+    position: relative;
+    background: rgba(255,255,255,0.07);
+    border: 3px solid rgba(255,255,255,0.2);
+    border-radius: 20px;
+    cursor: pointer;
+    padding: 10px 14px;
+    padding-top: 18px;
+    transition: transform 0.15s, border-color 0.15s;
+    -webkit-tap-highlight-color: transparent;
+  }
+
+  .piece-btn:hover { border-color: rgba(255,255,255,0.5); }
+  .piece-btn:active { transform: scale(0.88); }
+  .piece-btn.used { opacity: 0; pointer-events: none; transition: opacity 0.3s; }
+  .piece-btn svg { filter: drop-shadow(0 4px 10px rgba(0,0,0,0.5)); display: block; }
+
+  .piece-num {
+    position: absolute;
+    top: -14px;
+    left: 50%;
+    transform: translateX(-50%);
+    background: #ffdd00;
+    color: #222;
+    font-weight: bold;
+    font-size: 1.3rem;
+    width: 34px;
+    height: 34px;
+    border-radius: 50%;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    border: 3px solid #fff;
+    box-shadow: 0 2px 10px rgba(0,0,0,0.5);
+    pointer-events: none;
+    line-height: 1;
+  }
+
+  .piece-btn:not(.used) {
+    animation: bounce 1.8s ease-in-out infinite;
+  }
+  .piece-btn:not(.used):nth-child(2) { animation-delay: 0.3s; }
+  .piece-btn:not(.used):nth-child(3) { animation-delay: 0.6s; }
+  .piece-btn:not(.used):nth-child(4) { animation-delay: 0.9s; }
+  .piece-btn:not(.used):nth-child(5) { animation-delay: 1.2s; }
+  .piece-btn:not(.used):nth-child(6) { animation-delay: 1.5s; }
+
+  @keyframes bounce {
+    0%, 100% { transform: translateY(0); }
+    50% { transform: translateY(-8px); }
+  }
+
+  /* Launch button */
+  #launch-btn {
+    display: none;
+    position: fixed;
+    bottom: 40px;
+    left: 50%;
+    transform: translateX(-50%);
+    z-index: 5;
+    padding: 20px 50px;
+    font-size: clamp(1.6rem, 5vw, 2.4rem);
+    border-radius: 60px;
+    border: none;
+    background: linear-gradient(135deg, #ff6600, #ff2200);
+    color: #fff;
+    cursor: pointer;
+    font-family: inherit;
+    font-weight: bold;
+    box-shadow: 0 0 30px rgba(255,80,0,0.8), 0 8px 24px rgba(0,0,0,0.4);
+    letter-spacing: 2px;
+    white-space: nowrap;
+  }
+  #launch-btn.show {
+    display: block;
+    animation: launchPulse 0.8s ease-in-out infinite alternate;
+  }
+  #launch-btn:active { transform: translateX(-50%) scale(0.93); }
+
+  @keyframes launchPulse {
+    from { box-shadow: 0 0 20px rgba(255,80,0,0.6), 0 6px 20px rgba(0,0,0,0.4); }
+    to   { box-shadow: 0 0 50px rgba(255,160,0,1),  0 8px 30px rgba(0,0,0,0.4); }
+  }
+
+  /* Rocket launch animation */
+  #rocket-stage.launching {
+    animation: rocketFly 1.6s ease-in forwards;
+    pointer-events: none;
+  }
+  @keyframes rocketFly {
+    0%   { transform: scale(1.2) translateY(0);      }
+    15%  { transform: scale(1.2) translateY(12px);   }
+    100% { transform: scale(1.2) translateY(-220vh); }
+  }
+
+  /* Exhaust flame during launch */
+  #exhaust {
+    display: none;
+    position: fixed;
+    left: 50%;
+    transform: translateX(-50%);
+    pointer-events: none;
+    z-index: 4;
+  }
+  #exhaust.show { display: block; }
+
+  #celebration {
+    display: none;
+    position: fixed;
+    inset: 0;
+    background: rgba(0,0,0,0.5);
+    z-index: 10;
+    align-items: center;
+    justify-content: center;
+    flex-direction: column;
+  }
+  #celebration.show { display: flex; }
+
+  #celebration h2 {
+    color: #fff;
+    font-size: clamp(2.5rem, 8vw, 5rem);
+    text-shadow: 0 0 30px #ff0, 0 0 60px #f80;
+    animation: zoomPulse 0.6s ease-in-out infinite alternate;
+    text-align: center;
+    padding: 0 20px;
+  }
+
+  @keyframes zoomPulse {
+    from { transform: scale(1); }
+    to { transform: scale(1.08); }
+  }
+
+  #play-again {
+    margin-top: 30px;
+    padding: 18px 44px;
+    font-size: 1.6rem;
+    border-radius: 50px;
+    border: none;
+    background: linear-gradient(135deg, #f80, #f40);
+    color: #fff;
+    cursor: pointer;
+    font-family: inherit;
+    font-weight: bold;
+    box-shadow: 0 6px 20px rgba(255,100,0,0.5);
+    letter-spacing: 1px;
+  }
+  #play-again:active { transform: scale(0.92); }
+
+  .confetti-piece {
+    position: fixed;
+    width: 14px;
+    height: 14px;
+    border-radius: 3px;
+    pointer-events: none;
+    z-index: 11;
+    animation: fall linear forwards;
+  }
+  @keyframes fall {
+    0%   { transform: translateY(-20px) rotate(0deg); opacity: 1; }
+    100% { transform: translateY(110vh) rotate(720deg); opacity: 0; }
+  }
+
+  #launch-rocket {
+    position: fixed;
+    left: 50%;
+    bottom: 0;
+    transform: translateX(-50%);
+    z-index: 12;
+    pointer-events: none;
+    display: none;
+  }
+  #launch-rocket.launching {
+    display: block;
+    animation: rocketLaunch 1.8s ease-in forwards;
+  }
+  @keyframes rocketLaunch {
+    0%   { bottom: 0; opacity: 1; }
+    100% { bottom: 110vh; opacity: 0.7; }
+  }
+</style>
+</head>
+<body>
+
+<canvas id="stars-bg"></canvas>
+
+<div id="title">🚀 Build a Rocket!</div>
+
+<div id="game-area">
+  <div id="rocket-stage">
+    <!-- slots filled by JS -->
+  </div>
+
+  <div id="pieces-area">
+    <!-- piece buttons filled by JS -->
+  </div>
+</div>
+
+<button id="launch-btn" onclick="launchRocket()">🚀 LAUNCH!</button>
+
+<div id="exhaust">
+  <svg width="80" height="120" viewBox="0 0 80 120">
+    <path d="M15,0 Q40,80 25,120 Q40,95 55,120 Q45,80 65,0 Q50,30 40,10 Q30,30 15,0Z" fill="#ff6600" opacity="0.9"/>
+    <path d="M22,0 Q40,60 30,110 Q40,85 50,110 Q42,60 58,0 Q48,25 40,8 Q32,25 22,0Z" fill="#ffaa00"/>
+    <path d="M28,0 Q40,45 34,90 Q40,70 46,90 Q40,45 52,0 Q46,20 40,6 Q34,20 28,0Z" fill="#ffee44"/>
+  </svg>
+</div>
+
+<div id="celebration">
+  <h2>🌟 In Space! 🌟<br>You Did It!</h2>
+  <button id="play-again" onclick="resetGame()">Play Again! 🚀</button>
+</div>
+
+<script>
+// ── Starfield ──────────────────────────────────────────────────────────────
+const canvas = document.getElementById('stars-bg');
+const ctx2 = canvas.getContext('2d');
+function resizeCanvas() {
+  canvas.width = window.innerWidth;
+  canvas.height = window.innerHeight;
+}
+resizeCanvas();
+window.addEventListener('resize', resizeCanvas);
+
+const stars = Array.from({length: 120}, () => ({
+  x: Math.random(), y: Math.random(),
+  r: Math.random() * 2 + 0.5,
+  blink: Math.random() * Math.PI * 2
+}));
+
+function drawStars(ts) {
+  ctx2.clearRect(0, 0, canvas.width, canvas.height);
+  stars.forEach(s => {
+    const alpha = 0.5 + 0.5 * Math.sin(s.blink + ts / 1000);
+    ctx2.beginPath();
+    ctx2.arc(s.x * canvas.width, s.y * canvas.height, s.r, 0, Math.PI * 2);
+    ctx2.fillStyle = `rgba(255,255,255,${alpha})`;
+    ctx2.fill();
+  });
+  requestAnimationFrame(drawStars);
+}
+requestAnimationFrame(drawStars);
+
+// ── Audio ──────────────────────────────────────────────────────────────────
+let audioCtx;
+function getAudio() {
+  if (!audioCtx) audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+  if (audioCtx.state === 'suspended') audioCtx.resume();
+  return audioCtx;
+}
+
+function playTone(freq, duration, type = 'sine', vol = 0.35) {
+  const ac = getAudio();
+  const osc = ac.createOscillator();
+  const gain = ac.createGain();
+  osc.connect(gain); gain.connect(ac.destination);
+  osc.type = type;
+  osc.frequency.setValueAtTime(freq, ac.currentTime);
+  gain.gain.setValueAtTime(vol, ac.currentTime);
+  gain.gain.exponentialRampToValueAtTime(0.001, ac.currentTime + duration);
+  osc.start(ac.currentTime);
+  osc.stop(ac.currentTime + duration);
+}
+
+function playPlaceSound(index) {
+  const notes = [261, 294, 330, 392, 440, 523];
+  playTone(notes[index % notes.length], 0.25, 'triangle', 0.4);
+}
+
+function playCelebration() {
+  const melody = [523, 659, 784, 1047];
+  melody.forEach((f, i) => {
+    setTimeout(() => playTone(f, 0.4, 'triangle', 0.5), i * 160);
+  });
+  // whoosh
+  setTimeout(() => {
+    const ac = getAudio();
+    const buf = ac.createBuffer(1, ac.sampleRate * 1.5, ac.sampleRate);
+    const d = buf.getChannelData(0);
+    for (let i = 0; i < d.length; i++) d[i] = (Math.random() * 2 - 1) * (1 - i / d.length);
+    const src = ac.createBufferSource();
+    src.buffer = buf;
+    const filter = ac.createBiquadFilter();
+    filter.type = 'bandpass';
+    filter.frequency.setValueAtTime(400, ac.currentTime);
+    filter.frequency.exponentialRampToValueAtTime(2000, ac.currentTime + 1.5);
+    const g = ac.createGain();
+    g.gain.setValueAtTime(0.3, ac.currentTime);
+    g.gain.exponentialRampToValueAtTime(0.001, ac.currentTime + 1.5);
+    src.connect(filter); filter.connect(g); g.connect(ac.destination);
+    src.start();
+  }, 700);
+}
+
+// ── Rocket pieces definition ───────────────────────────────────────────────
+// Each piece: id, label, slot position on rocket, SVG path, color
+const PIECES = [
+  {
+    id: 'flame',
+    label: '🔥 Fire',
+    slot: { left: 55, top: 265, w: 110, h: 80 },
+    color: '#ff6600',
+    svg: `<ellipse cx="55" cy="20" rx="30" ry="18" fill="#ff4400"/>
+          <ellipse cx="55" cy="30" rx="20" ry="14" fill="#ff8800"/>
+          <ellipse cx="55" cy="38" rx="12" ry="10" fill="#ffcc00"/>
+          <path d="M25,18 Q55,70 85,18 Q70,55 55,75 Q40,55 25,18Z" fill="#ff6600" opacity="0.85"/>
+          <path d="M35,18 Q55,55 75,18 Q65,42 55,58 Q45,42 35,18Z" fill="#ffaa00"/>
+          <path d="M43,20 Q55,44 67,20 Q62,35 55,45 Q48,35 43,20Z" fill="#ffee44"/>`,
+    viewBox: '0 0 110 80'
+  },
+  {
+    id: 'engine',
+    label: 'Engine',
+    slot: { left: 35, top: 200, w: 150, h: 80 },
+    color: '#888',
+    svg: `<rect x="10" y="0" width="130" height="65" rx="12" fill="#778"/>
+          <rect x="20" y="8" width="110" height="50" rx="8" fill="#99aacc"/>
+          <rect x="55" y="15" width="40" height="35" rx="6" fill="#6688bb"/>
+          <circle cx="40" cy="32" r="12" fill="#445577"/>
+          <circle cx="40" cy="32" r="7" fill="#667799"/>
+          <circle cx="110" cy="32" r="12" fill="#445577"/>
+          <circle cx="110" cy="32" r="7" fill="#667799"/>
+          <rect x="0" y="52" width="150" height="13" rx="5" fill="#556"/>`,
+    viewBox: '0 0 150 80'
+  },
+  {
+    id: 'body',
+    label: 'Body',
+    slot: { left: 45, top: 110, w: 130, h: 105 },
+    color: '#e84',
+    svg: `<rect x="0" y="0" width="130" height="105" rx="16" fill="#dd6633"/>
+          <rect x="8" y="8" width="114" height="89" rx="12" fill="#ee7744"/>
+          <rect x="18" y="18" width="36" height="44" rx="8" fill="#aaddff" opacity="0.85"/>
+          <rect x="20" y="20" width="32" height="40" rx="7" fill="#cceeff" opacity="0.6"/>
+          <circle cx="36" cy="40" r="10" fill="#88bbdd" opacity="0.5"/>
+          <rect x="70" y="20" width="42" height="26" rx="6" fill="#ffcc44" opacity="0.9"/>
+          <rect x="74" y="24" width="34" height="18" rx="4" fill="#ffe866"/>
+          <rect x="70" y="56" width="42" height="14" rx="5" fill="#ff8844" opacity="0.8"/>
+          <rect x="74" y="59" width="34" height="8" rx="3" fill="#ffaa66"/>`,
+    viewBox: '0 0 130 105'
+  },
+  {
+    id: 'wings',
+    label: 'Wings',
+    slot: { left: 10, top: 165, w: 200, h: 70 },
+    color: '#44aaff',
+    svg: `<path d="M0,65 L30,5 L55,35 L55,65 Z" fill="#2288ee"/>
+          <path d="M5,65 L32,12 L52,38 L52,65 Z" fill="#44aaff"/>
+          <path d="M200,65 L170,5 L145,35 L145,65 Z" fill="#2288ee"/>
+          <path d="M195,65 L168,12 L148,38 L148,65 Z" fill="#44aaff"/>
+          <rect x="55" y="30" width="90" height="35" rx="6" fill="#1166cc"/>`,
+    viewBox: '0 0 200 70'
+  },
+  {
+    id: 'nose',
+    label: 'Nose',
+    slot: { left: 55, top: 10, w: 110, h: 115 },
+    color: '#ff4466',
+    svg: `<path d="M55,0 Q5,60 10,115 L100,115 Q105,60 55,0Z" fill="#ee2244"/>
+          <path d="M55,8 Q12,62 16,108 L94,108 Q98,62 55,8Z" fill="#ff4466"/>
+          <path d="M55,20 Q25,65 28,100 L82,100 Q85,65 55,20Z" fill="#ff6688" opacity="0.7"/>
+          <ellipse cx="55" cy="108" rx="45" ry="7" fill="#cc1133"/>`,
+    viewBox: '0 0 110 115'
+  },
+  {
+    id: 'window',
+    label: 'Window',
+    slot: { left: 72, top: 130, w: 76, h: 76 },
+    color: '#88ddff',
+    svg: `<circle cx="38" cy="38" r="38" fill="#1155aa"/>
+          <circle cx="38" cy="38" r="32" fill="#2277cc"/>
+          <circle cx="38" cy="38" r="26" fill="#aaddff"/>
+          <circle cx="38" cy="38" r="20" fill="#cceeff"/>
+          <circle cx="28" cy="28" r="8" fill="#ffffff" opacity="0.5"/>
+          <circle cx="48" cy="48" r="5" fill="#88bbdd" opacity="0.4"/>
+          <circle cx="38" cy="38" r="26" fill="none" stroke="#ffffff" stroke-width="2" opacity="0.4"/>`,
+    viewBox: '0 0 76 76'
+  }
+];
+
+let placed = new Set();
+let pieceKeyMap = {}; // number 1-6 → piece id
+
+// ── Render ─────────────────────────────────────────────────────────────────
+function renderStage() {
+  const stage = document.getElementById('rocket-stage');
+  stage.innerHTML = '';
+  PIECES.forEach(p => {
+    const s = p.slot;
+    const div = document.createElement('div');
+    div.className = 'rocket-slot ' + (placed.has(p.id) ? 'filled' : 'empty');
+    div.id = 'slot-' + p.id;
+    div.style.cssText = `left:${s.left}px;top:${s.top}px;width:${s.w}px;height:${s.h}px;`;
+    div.innerHTML = `<svg width="${s.w}" height="${s.h}" viewBox="${p.viewBox}">${p.svg}</svg>`;
+    stage.appendChild(div);
+  });
+}
+
+function renderPieces() {
+  const area = document.getElementById('pieces-area');
+  area.innerHTML = '';
+  pieceKeyMap = {};
+  const shuffled = [...PIECES].sort(() => Math.random() - 0.5);
+  shuffled.forEach((p, i) => {
+    const num = i + 1;
+    pieceKeyMap[num] = p.id;
+    const btn = document.createElement('button');
+    btn.className = 'piece-btn' + (placed.has(p.id) ? ' used' : '');
+    btn.id = 'piece-' + p.id;
+    btn.setAttribute('aria-label', `${num}: ${p.label}`);
+    const targetH = 90;
+    const vb = p.viewBox.split(' ').map(Number);
+    const w = Math.round(vb[2] * (targetH / vb[3]));
+    btn.innerHTML = `<svg width="${w}" height="${targetH}" viewBox="${p.viewBox}">${p.svg}</svg>`;
+    const badge = document.createElement('div');
+    badge.className = 'piece-num';
+    badge.textContent = num;
+    btn.appendChild(badge);
+    btn.onclick = () => placePiece(p.id);
+    area.appendChild(btn);
+  });
+}
+
+document.addEventListener('keydown', e => {
+  const num = parseInt(e.key);
+  if (num >= 1 && num <= 6 && pieceKeyMap[num]) placePiece(pieceKeyMap[num]);
+});
+
+// ── Game logic ─────────────────────────────────────────────────────────────
+function placePiece(id) {
+  if (placed.has(id)) return;
+  placed.add(id);
+
+  // Update slot
+  const slot = document.getElementById('slot-' + id);
+  if (slot) {
+    slot.className = 'rocket-slot filled';
+    slot.style.animation = 'none';
+    void slot.offsetWidth;
+    slot.style.animation = '';
+  }
+
+  // Hide piece button
+  const btn = document.getElementById('piece-' + id);
+  if (btn) btn.classList.add('used');
+
+  playPlaceSound(placed.size - 1);
+
+  if (placed.size === PIECES.length) {
+    setTimeout(showLaunchButton, 400);
+  }
+}
+
+function showLaunchButton() {
+  // Play a "ready" fanfare
+  [523, 659, 784].forEach((f, i) => setTimeout(() => playTone(f, 0.25, 'triangle', 0.4), i * 120));
+  document.getElementById('launch-btn').classList.add('show');
+}
+
+function launchRocket() {
+  document.getElementById('launch-btn').classList.remove('show');
+
+  // Position exhaust flame just below the rocket stage
+  const stage = document.getElementById('rocket-stage');
+  const rect = stage.getBoundingClientRect();
+  const exhaust = document.getElementById('exhaust');
+  exhaust.style.top = (rect.bottom - 20) + 'px';
+  exhaust.classList.add('show');
+
+  // Whoosh sound
+  playCelebration();
+
+  // Fly rocket up
+  stage.classList.add('launching');
+
+  setTimeout(() => {
+    exhaust.classList.remove('show');
+    spawnConfetti();
+    document.getElementById('celebration').classList.add('show');
+  }, 1600);
+}
+
+function spawnConfetti() {
+  const colors = ['#ff4444','#44ff88','#4488ff','#ffff44','#ff44ff','#44ffff','#ff8844'];
+  for (let i = 0; i < 80; i++) {
+    setTimeout(() => {
+      const el = document.createElement('div');
+      el.className = 'confetti-piece';
+      el.style.left = Math.random() * 100 + 'vw';
+      el.style.background = colors[Math.floor(Math.random() * colors.length)];
+      el.style.animationDuration = (1.5 + Math.random() * 2) + 's';
+      el.style.animationDelay = '0s';
+      el.style.borderRadius = Math.random() > 0.5 ? '50%' : '3px';
+      document.body.appendChild(el);
+      setTimeout(() => el.remove(), 4000);
+    }, i * 40);
+  }
+}
+
+function resetGame() {
+  placed.clear();
+  document.getElementById('celebration').classList.remove('show');
+  document.getElementById('launch-btn').classList.remove('show');
+  document.getElementById('exhaust').classList.remove('show');
+  const stage = document.getElementById('rocket-stage');
+  stage.classList.remove('launching');
+  stage.style.animation = 'none';
+  void stage.offsetWidth;
+  stage.style.animation = '';
+  renderStage();
+  renderPieces();
+}
+
+// ── Init ───────────────────────────────────────────────────────────────────
+renderStage();
+renderPieces();
+</script>
+</body>
+</html>
