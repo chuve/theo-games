@@ -377,7 +377,7 @@ function drawWorm(cx, cy, colorIdx, wobble) {
 let bugs  = [];
 let score = 0;
 
-const MAX_BUGS      = 22;
+const MAX_BUGS      = 1;
 const BUG_MAX_SPEED = 1.4;
 const SPAWN_MS      = 2800;
 let   lastSpawn     = -99999;
@@ -395,13 +395,12 @@ function makeBug() {
 
 function initBugs() {
   bugs = [];
-  for (let i = 0; i < 10; i++) bugs.push(makeBug());
+  bugs.push(makeBug());
 }
 
 function updateBugs(now) {
-  if (now - lastSpawn > SPAWN_MS && bugs.length < MAX_BUGS) {
+  if (bugs.length < MAX_BUGS) {
     bugs.push(makeBug());
-    lastSpawn = now;
   }
   for (const b of bugs) {
     // Gentle random jitter
