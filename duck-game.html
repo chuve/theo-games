@@ -99,7 +99,7 @@
       <path d="M10 1v2M10 17v2M1 10h2M17 10h2M3.22 3.22l1.41 1.41M15.36 15.36l1.41 1.41M3.22 16.78l1.41-1.41M15.36 4.64l1.41-1.41" stroke="white" stroke-width="2" stroke-linecap="round"/>
     </svg>
   </button>
-  <button id="mute-btn" class="hud-btn" title="Toggle sound (M)">&#x1F50A;</button>
+  <button id="mute-btn" class="hud-btn" title="Toggle sound (M)">&#x1F507;</button>
 
   <div id="settings-panel">
     <div class="section-label">Worms on screen</div>
@@ -121,7 +121,7 @@ let W = 0, H = 0;
 // ─── AUDIO (Web Audio API — 8-bit chiptune) ──────────────────────────────────
 let audioCtx   = null;
 let masterGain = null;
-let muted      = false;
+let muted      = true;
 
 // Note frequencies (Hz)
 const C3=130.81,D3=146.83,E3=164.81,F3=174.61,G3=196.00,A3=220.00,B3=246.94;
