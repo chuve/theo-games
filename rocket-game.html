@@ -504,7 +504,9 @@ let pieceKeyMap = {}; // number 1-9 → piece id
 // ── Render ─────────────────────────────────────────────────────────────────
 function renderStage() {
   const stage = document.getElementById('rocket-stage');
+  const exhaust = document.getElementById('exhaust');
   stage.innerHTML = '';
+  stage.appendChild(exhaust);
   PIECES.forEach(p => {
     const s = p.slot;
     const div = document.createElement('div');
@@ -572,8 +574,8 @@ function placePiece(id) {
 }
 
 function showLaunchButton() {
-  // Play a "ready" fanfare
   [523, 659, 784].forEach((f, i) => setTimeout(() => playTone(f, 0.25, 'triangle', 0.4), i * 120));
+  document.getElementById('pieces-area').style.pointerEvents = 'none';
   document.getElementById('launch-btn').classList.add('show');
 }
 
@@ -669,6 +671,7 @@ function resetGame() {
   placed.clear();
   document.getElementById('celebration').classList.remove('show');
   document.getElementById('launch-btn').classList.remove('show');
+  document.getElementById('pieces-area').style.pointerEvents = '';
   const stage = document.getElementById('rocket-stage');
   stage.classList.remove('launching');
   stage.style.animation = 'none';
