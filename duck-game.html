@@ -24,69 +24,85 @@
     #score { color: #FFD700; }
     .hud-btn {
       position: fixed;
-      top: 10px;
+      top: 12px;
+      width: 40px;
+      height: 40px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
       background: rgba(0,0,0,0.55);
-      border: 2px solid rgba(255,255,255,0.7);
+      border: 2px solid rgba(255,255,255,0.55);
+      border-radius: 6px;
       color: #fff;
-      font-size: 18px;
-      padding: 5px 10px;
+      font-size: 20px;
+      line-height: 1;
       cursor: pointer;
       z-index: 20;
-      border-radius: 4px;
-      font-family: 'Press Start 2P', monospace;
-      line-height: 1;
+      padding: 0;
+      transition: background 0.12s, border-color 0.12s;
     }
-    .hud-btn:hover { background: rgba(255,255,255,0.15); }
-    #mute-btn    { right: 14px; }
-    #settings-btn { right: 70px; }
+    .hud-btn:hover {
+      background: rgba(255,255,255,0.15);
+      border-color: rgba(255,255,255,0.85);
+    }
+    #mute-btn     { right: 12px; }
+    #settings-btn { right: 60px; }
+    #settings-btn svg { display: block; }
 
     #settings-panel {
       display: none;
       position: fixed;
-      top: 52px; right: 14px;
-      background: rgba(10,10,40,0.96);
-      border: 2px solid rgba(255,255,255,0.5);
-      border-radius: 6px;
-      padding: 16px 20px;
+      top: 62px; right: 12px;
+      background: rgba(8,8,36,0.97);
+      border: 2px solid rgba(255,255,255,0.35);
+      border-radius: 8px;
+      padding: 18px 18px 14px;
       z-index: 30;
       font-family: 'Press Start 2P', monospace;
       color: #fff;
-      min-width: 220px;
+      width: 230px;
+      box-shadow: 0 8px 32px rgba(0,0,0,0.6);
     }
     #settings-panel.open { display: block; }
-    #settings-panel label {
-      display: block;
-      font-size: 8px;
-      color: rgba(255,255,255,0.6);
-      margin-bottom: 8px;
-      letter-spacing: 1px;
+    #settings-panel .section-label {
+      font-size: 7px;
+      color: rgba(255,255,255,0.45);
+      letter-spacing: 2px;
+      margin-bottom: 12px;
+      text-transform: uppercase;
     }
     #settings-panel .row {
       display: flex;
       align-items: center;
-      gap: 10px;
-      margin-bottom: 4px;
+      gap: 12px;
     }
     #worm-count-slider {
       flex: 1;
+      height: 4px;
       accent-color: #FFD700;
       cursor: pointer;
     }
     #worm-count-val {
-      font-size: 14px;
+      font-size: 16px;
       color: #FFD700;
-      min-width: 24px;
+      min-width: 20px;
       text-align: right;
+      text-shadow: 0 0 8px rgba(255,215,0,0.5);
     }
   </style>
 </head>
 <body>
   <div id="hud">&#x1F41E; CAUGHT: <span id="score">0</span></div>
-  <button id="settings-btn" class="hud-btn" title="Settings">&#x2699;</button>
-  <button id="mute-btn"     class="hud-btn" title="Toggle sound (M)">&#x1F50A;</button>
+  <button id="settings-btn" class="hud-btn" title="Settings">
+    <svg width="20" height="20" viewBox="0 0 20 20" fill="none" xmlns="http://www.w3.org/2000/svg">
+      <circle cx="10" cy="10" r="3" stroke="white" stroke-width="2"/>
+      <path d="M10 1v2M10 17v2M1 10h2M17 10h2M3.22 3.22l1.41 1.41M15.36 15.36l1.41 1.41M3.22 16.78l1.41-1.41M15.36 4.64l1.41-1.41" stroke="white" stroke-width="2" stroke-linecap="round"/>
+    </svg>
+  </button>
+  <button id="mute-btn" class="hud-btn" title="Toggle sound (M)">&#x1F50A;</button>
 
   <div id="settings-panel">
-    <label>WORMS ON SCREEN</label>
+    <div class="section-label">Worms on screen</div>
     <div class="row">
       <input id="worm-count-slider" type="range" min="1" max="10" value="1">
       <span id="worm-count-val">1</span>
