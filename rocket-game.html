@@ -181,13 +181,21 @@
   /* Exhaust flame during launch */
   #exhaust {
     display: none;
-    position: fixed;
+    position: absolute;
+    bottom: -100px;
     left: 50%;
     transform: translateX(-50%);
     pointer-events: none;
     z-index: 4;
   }
-  #exhaust.show { display: block; }
+  #exhaust.show {
+    display: block;
+    animation: exhaustFlicker 0.08s ease-in-out infinite alternate;
+  }
+  @keyframes exhaustFlicker {
+    from { transform: translateX(-50%) scaleY(1)    scaleX(1);    }
+    to   { transform: translateX(-50%) scaleY(1.12) scaleX(0.9);  }
+  }
 
   #celebration {
     display: none;
@@ -273,6 +281,13 @@
 <div id="game-area">
   <div id="rocket-stage">
     <!-- slots filled by JS -->
+    <div id="exhaust">
+      <svg width="80" height="120" viewBox="0 0 80 120">
+        <path d="M15,0 Q40,80 25,120 Q40,95 55,120 Q45,80 65,0 Q50,30 40,10 Q30,30 15,0Z" fill="#ff6600" opacity="0.9"/>
+        <path d="M22,0 Q40,60 30,110 Q40,85 50,110 Q42,60 58,0 Q48,25 40,8 Q32,25 22,0Z" fill="#ffaa00"/>
+        <path d="M28,0 Q40,45 34,90 Q40,70 46,90 Q40,45 52,0 Q46,20 40,6 Q34,20 28,0Z" fill="#ffee44"/>
+      </svg>
+    </div>
   </div>
 
   <div id="pieces-area">
@@ -281,14 +296,6 @@
 </div>
 
 <button id="launch-btn" onclick="launchRocket()">🚀 LAUNCH!</button>
-
-<div id="exhaust">
-  <svg width="80" height="120" viewBox="0 0 80 120">
-    <path d="M15,0 Q40,80 25,120 Q40,95 55,120 Q45,80 65,0 Q50,30 40,10 Q30,30 15,0Z" fill="#ff6600" opacity="0.9"/>
-    <path d="M22,0 Q40,60 30,110 Q40,85 50,110 Q42,60 58,0 Q48,25 40,8 Q32,25 22,0Z" fill="#ffaa00"/>
-    <path d="M28,0 Q40,45 34,90 Q40,70 46,90 Q40,45 52,0 Q46,20 40,6 Q34,20 28,0Z" fill="#ffee44"/>
-  </svg>
-</div>
 
 <div id="celebration">
   <h2>🌟 In Space! 🌟<br>You Did It!</h2>
@@ -541,27 +548,75 @@ function showLaunchButton() {
   document.getElementById('launch-btn').classList.add('show');
 }
 
+function playRocketSound() {
+  const ac = getAudio();
+  const dur = 2.2;
+
+  // Layer 1: deep engine rumble (brown noise through rising lowpass)
+  const buf1 = ac.createBuffer(1, ac.sampleRate * dur, ac.sampleRate);
+  const d1 = buf1.getChannelData(0);
+  let last = 0;
+  for (let i = 0; i < d1.length; i++) {
+    const w = Math.random() * 2 - 1;
+    last = (last + 0.04 * w) / 1.04;
+    d1[i] = last * 4;
+  }
+  const rumble = ac.createBufferSource();
+  rumble.buffer = buf1;
+  const lp = ac.createBiquadFilter();
+  lp.type = 'lowpass';
+  lp.frequency.setValueAtTime(120, ac.currentTime);
+  lp.frequency.exponentialRampToValueAtTime(900, ac.currentTime + dur);
+  const gRumble = ac.createGain();
+  gRumble.gain.setValueAtTime(0, ac.currentTime);
+  gRumble.gain.linearRampToValueAtTime(0.9, ac.currentTime + 0.15);
+  gRumble.gain.exponentialRampToValueAtTime(0.001, ac.currentTime + dur);
+  rumble.connect(lp); lp.connect(gRumble); gRumble.connect(ac.destination);
+  rumble.start();
+
+  // Layer 2: rising whoosh (white noise bandpass sweeping up)
+  const buf2 = ac.createBuffer(1, ac.sampleRate * dur, ac.sampleRate);
+  const d2 = buf2.getChannelData(0);
+  for (let i = 0; i < d2.length; i++) d2[i] = Math.random() * 2 - 1;
+  const whoosh = ac.createBufferSource();
+  whoosh.buffer = buf2;
+  const bp = ac.createBiquadFilter();
+  bp.type = 'bandpass';
+  bp.frequency.setValueAtTime(200, ac.currentTime);
+  bp.frequency.exponentialRampToValueAtTime(6000, ac.currentTime + dur);
+  bp.Q.value = 0.8;
+  const gWhoosh = ac.createGain();
+  gWhoosh.gain.setValueAtTime(0.4, ac.currentTime);
+  gWhoosh.gain.exponentialRampToValueAtTime(0.001, ac.currentTime + dur);
+  whoosh.connect(bp); bp.connect(gWhoosh); gWhoosh.connect(ac.destination);
+  whoosh.start();
+
+  // Layer 3: low thud at ignition
+  const osc = ac.createOscillator();
+  osc.type = 'sine';
+  osc.frequency.setValueAtTime(80, ac.currentTime);
+  osc.frequency.exponentialRampToValueAtTime(30, ac.currentTime + 0.4);
+  const gThud = ac.createGain();
+  gThud.gain.setValueAtTime(0.7, ac.currentTime);
+  gThud.gain.exponentialRampToValueAtTime(0.001, ac.currentTime + 0.4);
+  osc.connect(gThud); gThud.connect(ac.destination);
+  osc.start(); osc.stop(ac.currentTime + 0.4);
+}
+
 function launchRocket() {
   document.getElementById('launch-btn').classList.remove('show');
+  document.getElementById('exhaust').classList.add('show');
 
-  // Position exhaust flame just below the rocket stage
+  playRocketSound();
+
   const stage = document.getElementById('rocket-stage');
-  const rect = stage.getBoundingClientRect();
-  const exhaust = document.getElementById('exhaust');
-  exhaust.style.top = (rect.bottom - 20) + 'px';
-  exhaust.classList.add('show');
-
-  // Whoosh sound
-  playCelebration();
-
-  // Fly rocket up
   stage.classList.add('launching');
 
   setTimeout(() => {
-    exhaust.classList.remove('show');
+    document.getElementById('exhaust').classList.remove('show');
     spawnConfetti();
     document.getElementById('celebration').classList.add('show');
-  }, 1600);
+  }, 1800);
 }
 
 function spawnConfetti() {
@@ -585,7 +640,6 @@ function resetGame() {
   placed.clear();
   document.getElementById('celebration').classList.remove('show');
   document.getElementById('launch-btn').classList.remove('show');
-  document.getElementById('exhaust').classList.remove('show');
   const stage = document.getElementById('rocket-stage');
   stage.classList.remove('launching');
   stage.style.animation = 'none';
