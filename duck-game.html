@@ -315,102 +315,62 @@ function drawDuck(x, y) {
   ctx.restore();
 }
 
-// ─── BUG SPRITES ─────────────────────────────────────────────────────────────
-// NES-style side-view worms (arch / hump shape). 12 wide × 8 tall.
-// Head (H) on right, tail (D, darker) on left — sprite is flipped in drawBugs
-// when the worm moves left, so it always faces its direction of travel.
-const SPRITES = [
+// ─── WORM DRAWING ────────────────────────────────────────────────────────────
+// Smooth segmented earthworm drawn with canvas curves. 5 colour variants.
+const WORM_COLORS = ['#F49AC2','#88DD44','#FF8833','#AA66CC','#44AAEE'];
+const WORM_OUTLINE = '#2A2040';
 
-  // ── 0: Green worm ─────────────────────────────────────────────────────────
-  {
-    pix: [
-      '    CCCC    ',  //  4+4+4 = 12  arch top
-      '   CCCCCC   ',  //  3+6+3
-      '  CCCCCCCC  ',  //  2+8+2
-      ' CCCCCCCCCC ',  //  1+10+1
-      'DDCCCCCCCCEH',  //  tail DD · body · eye E · head H
-      'DD CCCCCC HH',  //  2+1+6+1+2
-      'DD  CCCC  HH',  //  2+2+4+2+2
-      ' D   CC   H ',  //  feet stubs
-    ],
-    pal: { C:'#44CC44', D:'#1A8800', H:'#88EE44', E:'#111111' },
-  },
+function drawWorm(cx, cy, colorIdx, wobble) {
+  const color = WORM_COLORS[colorIdx % WORM_COLORS.length];
+  const N   = 8;    // segments
+  const SEG = 9;    // centre-to-centre spacing (px)
+  const R   = 7;    // body radius
+  const AMP = 10;   // wiggle amplitude
 
-  // ── 1: Red worm ───────────────────────────────────────────────────────────
-  {
-    pix: [
-      '    CCCC    ',
-      '   CCCCCC   ',
-      '  CCCCCCCC  ',
-      ' CCCCCCCCCC ',
-      'DDCCCCCCCCEH',
-      'DD CCCCCC HH',
-      'DD  CCCC  HH',
-      ' D   CC   H ',
-    ],
-    pal: { C:'#DD2200', D:'#881100', H:'#FF5533', E:'#111111' },
-  },
-
-  // ── 2: Orange worm ────────────────────────────────────────────────────────
-  {
-    pix: [
-      '    CCCC    ',
-      '   CCCCCC   ',
-      '  CCCCCCCC  ',
-      ' CCCCCCCCCC ',
-      'DDCCCCCCCCEH',
-      'DD CCCCCC HH',
-      'DD  CCCC  HH',
-      ' D   CC   H ',
-    ],
-    pal: { C:'#FF8C00', D:'#CC5500', H:'#FFBB44', E:'#111111' },
-  },
-
-  // ── 3: Purple worm ────────────────────────────────────────────────────────
-  {
-    pix: [
-      '    CCCC    ',
-      '   CCCCCC   ',
-      '  CCCCCCCC  ',
-      ' CCCCCCCCCC ',
-      'DDCCCCCCCCEH',
-      'DD CCCCCC HH',
-      'DD  CCCC  HH',
-      ' D   CC   H ',
-    ],
-    pal: { C:'#9944CC', D:'#551199', H:'#CC77FF', E:'#111111' },
-  },
-
-  // ── 4: Blue worm ──────────────────────────────────────────────────────────
-  {
-    pix: [
-      '    CCCC    ',
-      '   CCCCCC   ',
-      '  CCCCCCCC  ',
-      ' CCCCCCCCCC ',
-      'DDCCCCCCCCEH',
-      'DD CCCCCC HH',
-      'DD  CCCC  HH',
-      ' D   CC   H ',
-    ],
-    pal: { C:'#2266EE', D:'#113399', H:'#55AAFF', E:'#111111' },
-  },
-];
-
-function drawSprite(pix, pal, cx, cy) {
-  const S = 4; // pixel block = 4px
-  const rows = pix.length;
-  const cols = pix[0].length;
-  const ox = Math.round(cx - (cols * S) / 2);
-  const oy = Math.round(cy - (rows * S) / 2);
-  for (let r = 0; r < rows; r++) {
-    for (let c = 0; c < cols; c++) {
-      const ch = pix[r][c];
-      if (ch === ' ') continue;
-      ctx.fillStyle = pal[ch] || '#ff00ff';
-      ctx.fillRect(ox + c * S, oy + r * S, S, S);
-    }
+  // Build spine points along a sine wave that scrolls with wobble
+  const pts = [];
+  for (let i = 0; i < N; i++) {
+    const u = i / (N - 1);
+    pts.push({
+      x: (u - 0.5) * (N - 1) * SEG,
+      y: Math.sin(u * 2.4 * Math.PI + wobble) * AMP,
+    });
   }
+
+  ctx.save();
+  ctx.translate(cx, cy);
+  ctx.lineCap  = 'round';
+  ctx.lineJoin = 'round';
+
+  // Dark outline
+  ctx.strokeStyle = WORM_OUTLINE;
+  ctx.lineWidth   = R * 2 + 5;
+  ctx.beginPath();
+  ctx.moveTo(pts[0].x, pts[0].y);
+  for (let i = 1; i < N; i++) ctx.lineTo(pts[i].x, pts[i].y);
+  ctx.stroke();
+
+  // Body fill
+  ctx.strokeStyle = color;
+  ctx.lineWidth   = R * 2;
+  ctx.stroke();
+
+  // Segment dividers (perpendicular tick lines)
+  ctx.strokeStyle = WORM_OUTLINE;
+  ctx.lineWidth   = 1.8;
+  for (let i = 1; i < N - 1; i++) {
+    const dx  = pts[i + 1].x - pts[i - 1].x;
+    const dy  = pts[i + 1].y - pts[i - 1].y;
+    const len = Math.hypot(dx, dy) || 1;
+    const nx  = -dy / len * (R - 1);
+    const ny  =  dx / len * (R - 1);
+    ctx.beginPath();
+    ctx.moveTo(pts[i].x + nx, pts[i].y + ny);
+    ctx.lineTo(pts[i].x - nx, pts[i].y - ny);
+    ctx.stroke();
+  }
+
+  ctx.restore();
 }
 
 // ─── BUGS ────────────────────────────────────────────────────────────────────
@@ -428,7 +388,7 @@ function makeBug() {
     y: 80 + Math.random() * (H - 200),
     vx: (Math.random() - 0.5) * BUG_MAX_SPEED,
     vy: (Math.random() - 0.5) * BUG_MAX_SPEED,
-    type: Math.floor(Math.random() * SPRITES.length),
+    type: Math.floor(Math.random() * WORM_COLORS.length),
     wobble: Math.random() * Math.PI * 2,
   };
 }
@@ -467,15 +427,7 @@ function updateBugs(now) {
 
 function drawBugs() {
   for (const b of bugs) {
-    const sp = SPRITES[b.type];
-    ctx.save();
-    ctx.translate(b.x, b.y);
-    // Flip horizontally so the worm always faces its direction of travel
-    if (b.vx < 0) ctx.scale(-1, 1);
-    // Gentle up/down bob — no full rotation (side-view worms look wrong rotated)
-    ctx.translate(0, Math.sin(b.wobble) * 2);
-    drawSprite(sp.pix, sp.pal, 0, 0);
-    ctx.restore();
+    drawWorm(b.x, b.y, b.type, b.wobble);
   }
 }
 
