@@ -686,9 +686,7 @@ function playCelebration() {
 // ── Guided Mode ───────────────────────────────────────────────────────────
 const ELEVEN_KEY   = 'REMOVED';
 const ELEVEN_VOICE = 'ErXwobaYiN019PkySvjV'; // Antoni
-const ttsCache     = new Map(); // text → AudioBuffer (L1: session)
 
-// L2: persistent IndexedDB cache (stores raw MP3 ArrayBuffers)
 const idbReady = new Promise(res => {
   const r = indexedDB.open('tts-cache-v1', 1);
   r.onupgradeneeded = e => e.target.result.createObjectStore('audio');
@@ -759,21 +757,16 @@ async function speakTarget() {
   const num   = getTargetNum();
   const text  = `Press number ${num}`;
 
-  // L1: in-memory
-  if (ttsCache.has(text)) { playAudioBuf(ttsCache.get(text)); return; }
-
-  // L2: IndexedDB (persists across reloads)
+  // Check IndexedDB first
   try {
     const stored = await idbGet(text);
     if (stored) {
-      const buf = await getAudio().decodeAudioData(stored);
-      ttsCache.set(text, buf);
-      playAudioBuf(buf);
+      playAudioBuf(await getAudio().decodeAudioData(stored));
       return;
     }
   } catch(e) {}
 
-  // Fetch from ElevenLabs, store in both caches
+  // Fetch from ElevenLabs and persist
   try {
     const res = await fetch(`https://api.elevenlabs.io/v1/text-to-speech/${ELEVEN_VOICE}`, {
       method: 'POST',
@@ -782,10 +775,8 @@ async function speakTarget() {
     });
     if (!res.ok) throw new Error(res.status);
     const arrayBuf = await res.arrayBuffer();
-    idbSet(text, arrayBuf.slice(0)); // persist raw MP3
-    const buf = await getAudio().decodeAudioData(arrayBuf);
-    ttsCache.set(text, buf);
-    playAudioBuf(buf);
+    idbSet(text, arrayBuf.slice(0));
+    playAudioBuf(await getAudio().decodeAudioData(arrayBuf));
   } catch(e) {
     speakFallback(text);
   }
