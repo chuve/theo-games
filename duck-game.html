@@ -100,8 +100,7 @@
     </svg>
   </button>
   <button id="mute-btn" class="hud-btn" title="Toggle sound (M)">&#x1F507;</button>
-  <audio id="bg-music"     src="music.mp3" loop preload="auto"></audio>
-  <audio id="catch-sound"  src="catch.mp3"      preload="auto"></audio>
+  <audio id="catch-sound" src="catch.mp3" preload="auto"></audio>
 
   <div id="settings-panel">
     <div class="section-label">Worms on screen</div>
@@ -122,18 +121,12 @@ let W = 0, H = 0;
 
 // ─── AUDIO ───────────────────────────────────────────────────────────────────
 let muted     = true;
-const bgMusic    = document.getElementById('bg-music');
 const catchSound = document.getElementById('catch-sound');
 
 function setMute(m) {
   muted = m;
-  bgMusic.muted    = muted;
   catchSound.muted = muted;
   document.getElementById('mute-btn').textContent = muted ? '🔇' : '🔊';
-}
-
-function startMusic() {
-  if (bgMusic.paused) bgMusic.play().catch(() => {});
 }
 
 function playCatch() {
@@ -143,12 +136,9 @@ function playCatch() {
 }
 
 // Mute button + M key
-document.getElementById('mute-btn').addEventListener('click', () => {
-  setMute(!muted);
-  startMusic();
-});
+document.getElementById('mute-btn').addEventListener('click', () => setMute(!muted));
 document.addEventListener('keydown', e => {
-  if (e.key === 'm' || e.key === 'M') { setMute(!muted); startMusic(); }
+  if (e.key === 'm' || e.key === 'M') setMute(!muted);
 });
 
 // ─── SETTINGS PANEL ──────────────────────────────────────────────────────────
@@ -599,20 +589,17 @@ function setTarget(cx, cy) {
 }
 
 canvas.addEventListener('mousemove', e => {
-  startMusic();
   const r = canvas.getBoundingClientRect();
   setTarget(e.clientX - r.left, e.clientY - r.top);
 });
 canvas.addEventListener('touchmove', e => {
   e.preventDefault();
-  startMusic();
   const r   = canvas.getBoundingClientRect();
   const t   = e.touches[0];
   setTarget(t.clientX - r.left, t.clientY - r.top);
 }, { passive: false });
 canvas.addEventListener('touchstart', e => {
   e.preventDefault();
-  startMusic();
   const r = canvas.getBoundingClientRect();
   const t = e.touches[0];
   setTarget(t.clientX - r.left, t.clientY - r.top);
