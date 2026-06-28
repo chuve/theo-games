@@ -412,7 +412,23 @@ function playCelebration() {
 // ── Guided Mode ───────────────────────────────────────────────────────────
 const ELEVEN_KEY   = 'REMOVED';
 const ELEVEN_VOICE = 'ErXwobaYiN019PkySvjV'; // Antoni
-const ttsCache     = new Map(); // text → AudioBuffer (session cache)
+const ttsCache     = new Map(); // text → AudioBuffer (L1: session)
+
+// L2: persistent IndexedDB cache (stores raw MP3 ArrayBuffers)
+const idbReady = new Promise(res => {
+  const r = indexedDB.open('tts-cache-v1', 1);
+  r.onupgradeneeded = e => e.target.result.createObjectStore('audio');
+  r.onsuccess = e => res(e.target.result);
+  r.onerror   = () => res(null);
+});
+async function idbGet(key) {
+  const db = await idbReady; if (!db) return null;
+  return new Promise(res => { const r = db.transaction('audio').objectStore('audio').get(key); r.onsuccess = () => res(r.result ?? null); r.onerror = () => res(null); });
+}
+async function idbSet(key, val) {
+  const db = await idbReady; if (!db) return;
+  new Promise(res => { const tx = db.transaction('audio','readwrite'); tx.objectStore('audio').put(val, key); tx.oncomplete = res; });
+}
 
 let guidedMode = false;
 let guidedSeq  = [];   // piece ids in random play order
@@ -469,9 +485,21 @@ async function speakTarget() {
   const num   = getTargetNum();
   const text  = `Press number ${num}`;
 
-  // Serve from cache if already fetched this session
+  // L1: in-memory
   if (ttsCache.has(text)) { playAudioBuf(ttsCache.get(text)); return; }
 
+  // L2: IndexedDB (persists across reloads)
+  try {
+    const stored = await idbGet(text);
+    if (stored) {
+      const buf = await getAudio().decodeAudioData(stored);
+      ttsCache.set(text, buf);
+      playAudioBuf(buf);
+      return;
+    }
+  } catch(e) {}
+
+  // Fetch from ElevenLabs, store in both caches
   try {
     const res = await fetch(`https://api.elevenlabs.io/v1/text-to-speech/${ELEVEN_VOICE}`, {
       method: 'POST',
@@ -479,11 +507,13 @@ async function speakTarget() {
       body: JSON.stringify({ text, model_id: 'eleven_turbo_v2', voice_settings: { stability: 0.5, similarity_boost: 0.75 } })
     });
     if (!res.ok) throw new Error(res.status);
-    const buf = await getAudio().decodeAudioData(await res.arrayBuffer());
-    ttsCache.set(text, buf); // cache for reuse
+    const arrayBuf = await res.arrayBuffer();
+    idbSet(text, arrayBuf.slice(0)); // persist raw MP3
+    const buf = await getAudio().decodeAudioData(arrayBuf);
+    ttsCache.set(text, buf);
     playAudioBuf(buf);
   } catch(e) {
-    speakFallback(text); // browser TTS if ElevenLabs unavailable
+    speakFallback(text);
   }
 }
 
