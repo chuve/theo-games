@@ -586,10 +586,10 @@ function drawPops() {
 let arrowT = 0;
 
 function drawDirectionArrows(x, y) {
-  arrowT += 0.1;
-  const pulse   = 0.65 + 0.35 * Math.sin(arrowT * 5);
-  const DIST    = 72;   // px from duck centre to arrow centre
-  const S       = 5;    // pixel-block size for the arrow
+  arrowT += 0.03;                               // slow tick → gentle pulse
+  const pulse   = 0.75 + 0.25 * Math.sin(arrowT * 3); // subtle, slow fade
+  const DIST    = 80;   // px from duck centre to arrow centre
+  const S       = 9;    // pixel-block size for the arrow (bigger)
 
   // Pixel triangle pointing RIGHT before rotation:
   //  col  -1   0   1
@@ -618,7 +618,7 @@ function drawDirectionArrows(x, y) {
 
     ctx.save();
     ctx.translate(x + d.dx * DIST, y + d.dy * DIST);
-    ctx.rotate(Math.atan2(d.dy, d.dx));
+    ctx.rotate(Math.atan2(d.dy, d.dx) + Math.PI); // flip 180° → points toward duck
     ctx.globalAlpha = pulse;
 
     // Glow
