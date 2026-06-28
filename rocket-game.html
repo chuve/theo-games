@@ -467,7 +467,7 @@ async function speakTarget() {
   if (!guidedMode || guidedIdx >= guidedSeq.length) return;
   const piece = PIECES.find(p => p.id === guidedSeq[guidedIdx]);
   const num   = getTargetNum();
-  const text  = `Press number ${num}! Add the ${piece.label}!`;
+  const text  = `${num}!`;
 
   // Serve from cache if already fetched this session
   if (ttsCache.has(text)) { playAudioBuf(ttsCache.get(text)); return; }
