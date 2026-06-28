@@ -715,7 +715,7 @@ function renderPieces() {
     btn.className = 'piece-btn' + (placed.has(p.id) ? ' used' : '');
     btn.id = 'piece-' + p.id;
     btn.setAttribute('aria-label', `${num}: ${p.label}`);
-    const targetH = 120;
+    const targetH = 90;
     const vb = p.viewBox.split(' ').map(Number);
     const w = Math.round(vb[2] * (targetH / vb[3]));
     btn.innerHTML = `<svg width="${w}" height="${targetH}" viewBox="${p.viewBox}">${p.svg}</svg>`;
