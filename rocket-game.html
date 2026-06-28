@@ -47,7 +47,7 @@
   #rocket-stage {
     position: relative;
     width: 220px;
-    height: 340px;
+    height: 355px;
     margin: 16px auto 0;
     transform: scale(1.2);
     transform-origin: top center;
@@ -354,7 +354,7 @@ function playTone(freq, duration, type = 'sine', vol = 0.35) {
 }
 
 function playPlaceSound(index) {
-  const notes = [261, 294, 330, 392, 440, 523];
+  const notes = [261, 294, 330, 349, 392, 440, 494, 523, 587];
   playTone(notes[index % notes.length], 0.25, 'triangle', 0.4);
 }
 
@@ -384,13 +384,22 @@ function playCelebration() {
 }
 
 // ── Rocket pieces definition ───────────────────────────────────────────────
-// Each piece: id, label, slot position on rocket, SVG path, color
+// Array order = z-order (first = behind, last = in front)
 const PIECES = [
   {
+    id: 'stabilizer',
+    label: 'Stabilizers',
+    slot: { left: 0, top: 272, w: 220, h: 68 },
+    svg: `<path d="M0,68 L30,18 L58,46 L58,68Z" fill="#bb1133"/>
+          <path d="M5,68 L31,25 L55,48 L55,68Z" fill="#ee3355"/>
+          <path d="M220,68 L190,18 L162,46 L162,68Z" fill="#bb1133"/>
+          <path d="M215,68 L189,25 L165,48 L165,68Z" fill="#ee3355"/>`,
+    viewBox: '0 0 220 68'
+  },
+  {
     id: 'flame',
-    label: '🔥 Fire',
+    label: 'Flame',
     slot: { left: 55, top: 265, w: 110, h: 80 },
-    color: '#ff6600',
     svg: `<ellipse cx="55" cy="20" rx="30" ry="18" fill="#ff4400"/>
           <ellipse cx="55" cy="30" rx="20" ry="14" fill="#ff8800"/>
           <ellipse cx="55" cy="38" rx="12" ry="10" fill="#ffcc00"/>
@@ -403,7 +412,6 @@ const PIECES = [
     id: 'engine',
     label: 'Engine',
     slot: { left: 35, top: 200, w: 150, h: 80 },
-    color: '#888',
     svg: `<rect x="10" y="0" width="130" height="65" rx="12" fill="#778"/>
           <rect x="20" y="8" width="110" height="50" rx="8" fill="#99aacc"/>
           <rect x="55" y="15" width="40" height="35" rx="6" fill="#6688bb"/>
@@ -415,10 +423,20 @@ const PIECES = [
     viewBox: '0 0 150 80'
   },
   {
+    id: 'wings',
+    label: 'Wings',
+    slot: { left: 10, top: 165, w: 200, h: 70 },
+    svg: `<path d="M0,65 L30,5 L55,35 L55,65 Z" fill="#2288ee"/>
+          <path d="M5,65 L32,12 L52,38 L52,65 Z" fill="#44aaff"/>
+          <path d="M200,65 L170,5 L145,35 L145,65 Z" fill="#2288ee"/>
+          <path d="M195,65 L168,12 L148,38 L148,65 Z" fill="#44aaff"/>
+          <rect x="55" y="30" width="90" height="35" rx="6" fill="#1166cc"/>`,
+    viewBox: '0 0 200 70'
+  },
+  {
     id: 'body',
     label: 'Body',
     slot: { left: 45, top: 110, w: 130, h: 105 },
-    color: '#e84',
     svg: `<rect x="0" y="0" width="130" height="105" rx="16" fill="#dd6633"/>
           <rect x="8" y="8" width="114" height="89" rx="12" fill="#ee7744"/>
           <rect x="18" y="18" width="36" height="44" rx="8" fill="#aaddff" opacity="0.85"/>
@@ -431,33 +449,9 @@ const PIECES = [
     viewBox: '0 0 130 105'
   },
   {
-    id: 'wings',
-    label: 'Wings',
-    slot: { left: 10, top: 165, w: 200, h: 70 },
-    color: '#44aaff',
-    svg: `<path d="M0,65 L30,5 L55,35 L55,65 Z" fill="#2288ee"/>
-          <path d="M5,65 L32,12 L52,38 L52,65 Z" fill="#44aaff"/>
-          <path d="M200,65 L170,5 L145,35 L145,65 Z" fill="#2288ee"/>
-          <path d="M195,65 L168,12 L148,38 L148,65 Z" fill="#44aaff"/>
-          <rect x="55" y="30" width="90" height="35" rx="6" fill="#1166cc"/>`,
-    viewBox: '0 0 200 70'
-  },
-  {
-    id: 'nose',
-    label: 'Nose',
-    slot: { left: 55, top: 10, w: 110, h: 115 },
-    color: '#ff4466',
-    svg: `<path d="M55,0 Q5,60 10,115 L100,115 Q105,60 55,0Z" fill="#ee2244"/>
-          <path d="M55,8 Q12,62 16,108 L94,108 Q98,62 55,8Z" fill="#ff4466"/>
-          <path d="M55,20 Q25,65 28,100 L82,100 Q85,65 55,20Z" fill="#ff6688" opacity="0.7"/>
-          <ellipse cx="55" cy="108" rx="45" ry="7" fill="#cc1133"/>`,
-    viewBox: '0 0 110 115'
-  },
-  {
     id: 'window',
     label: 'Window',
     slot: { left: 72, top: 130, w: 76, h: 76 },
-    color: '#88ddff',
     svg: `<circle cx="38" cy="38" r="38" fill="#1155aa"/>
           <circle cx="38" cy="38" r="32" fill="#2277cc"/>
           <circle cx="38" cy="38" r="26" fill="#aaddff"/>
@@ -466,11 +460,46 @@ const PIECES = [
           <circle cx="48" cy="48" r="5" fill="#88bbdd" opacity="0.4"/>
           <circle cx="38" cy="38" r="26" fill="none" stroke="#ffffff" stroke-width="2" opacity="0.4"/>`,
     viewBox: '0 0 76 76'
+  },
+  {
+    id: 'badge',
+    label: 'Badge',
+    slot: { left: 45, top: 120, w: 52, h: 52 },
+    svg: `<circle cx="26" cy="26" r="26" fill="#1a3a7a"/>
+          <circle cx="26" cy="26" r="21" fill="#1e4a90"/>
+          <circle cx="26" cy="26" r="15" fill="#112266"/>
+          <polygon points="26,9 29,19 40,19 32,25 35,36 26,29 17,36 20,25 12,19 23,19" fill="#ffd700"/>
+          <circle cx="26" cy="25" r="5" fill="#ff5500"/>
+          <circle cx="26" cy="25" r="2" fill="#ffcc00"/>`,
+    viewBox: '0 0 52 52'
+  },
+  {
+    id: 'nose',
+    label: 'Nose',
+    slot: { left: 55, top: 10, w: 110, h: 115 },
+    svg: `<path d="M55,0 Q5,60 10,115 L100,115 Q105,60 55,0Z" fill="#ee2244"/>
+          <path d="M55,8 Q12,62 16,108 L94,108 Q98,62 55,8Z" fill="#ff4466"/>
+          <path d="M55,20 Q25,65 28,100 L82,100 Q85,65 55,20Z" fill="#ff6688" opacity="0.7"/>
+          <ellipse cx="55" cy="108" rx="45" ry="7" fill="#cc1133"/>`,
+    viewBox: '0 0 110 115'
+  },
+  {
+    id: 'antenna',
+    label: 'Antenna',
+    slot: { left: 96, top: 0, w: 28, h: 32 },
+    svg: `<rect x="12" y="20" width="4" height="12" rx="2" fill="#99aacc"/>
+          <path d="M2,20 Q14,4 26,20" fill="none" stroke="#77aadd" stroke-width="3" stroke-linecap="round"/>
+          <circle cx="14" cy="20" r="3.5" fill="#aabbdd"/>
+          <circle cx="2"  cy="20" r="2.5" fill="#6688aa"/>
+          <circle cx="26" cy="20" r="2.5" fill="#6688aa"/>
+          <ellipse cx="14" cy="31" rx="5" ry="2.5" fill="#778899"/>
+          <circle cx="14" cy="10" r="3" fill="#88eeff" opacity="0.9"/>`,
+    viewBox: '0 0 28 32'
   }
 ];
 
 let placed = new Set();
-let pieceKeyMap = {}; // number 1-6 → piece id
+let pieceKeyMap = {}; // number 1-9 → piece id
 
 // ── Render ─────────────────────────────────────────────────────────────────
 function renderStage() {
@@ -514,7 +543,7 @@ function renderPieces() {
 
 document.addEventListener('keydown', e => {
   const num = parseInt(e.key);
-  if (num >= 1 && num <= 6 && pieceKeyMap[num]) placePiece(pieceKeyMap[num]);
+  if (num >= 1 && num <= 9 && pieceKeyMap[num]) placePiece(pieceKeyMap[num]);
 });
 
 // ── Game logic ─────────────────────────────────────────────────────────────
