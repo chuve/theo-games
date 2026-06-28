@@ -586,8 +586,8 @@ function renderPieces() {
     btn.className = 'piece-btn' + (placed.has(p.id) ? ' used' : '');
     btn.id = 'piece-' + p.id;
     btn.setAttribute('aria-label', `${num}: ${p.label}`);
-    // Fixed 64×44 thumbnail for uniform card sizes
-    btn.innerHTML = `<svg width="64" height="44" viewBox="${p.viewBox}" preserveAspectRatio="xMidYMid meet">${p.svg}</svg>`;
+    // Fixed 85×58 thumbnail for uniform card sizes
+    btn.innerHTML = `<svg width="85" height="58" viewBox="${p.viewBox}" preserveAspectRatio="xMidYMid meet">${p.svg}</svg>`;
     const badge = document.createElement('div');
     badge.className = 'piece-num';
     badge.textContent = num;
