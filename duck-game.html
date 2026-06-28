@@ -587,7 +587,7 @@ const keys = {};
 document.addEventListener('keydown', e => { keys[e.key] = true; });
 document.addEventListener('keyup',   e => { keys[e.key] = false; });
 
-const ARROW_SPEED = 7; // px per frame when holding arrow key
+const ARROW_SPEED = 14; // px per frame when holding arrow key
 
 function applyArrowKeys() {
   if (keys['ArrowLeft']  || keys['a'] || keys['A']) duck.tx = Math.max(0,  duck.tx - ARROW_SPEED);
