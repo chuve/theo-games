@@ -1,0 +1,274 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Theo's Arcade</title>
+  <link href="https://fonts.googleapis.com/css2?family=Press+Start+2P&display=swap" rel="stylesheet">
+  <style>
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+
+    body {
+      background: #0d0d2b;
+      min-height: 100vh;
+      font-family: 'Press Start 2P', monospace;
+      color: #fff;
+      overflow-x: hidden;
+    }
+
+    /* Starfield */
+    #stars {
+      position: fixed;
+      inset: 0;
+      pointer-events: none;
+      z-index: 0;
+    }
+
+    /* Ground strip at bottom */
+    .ground {
+      position: fixed;
+      bottom: 0; left: 0; right: 0;
+      height: 36px;
+      background: #2E6B1A;
+      z-index: 0;
+    }
+    .ground::before {
+      content: '';
+      position: absolute;
+      top: 0; left: 0; right: 0;
+      height: 4px;
+      background: #52A82E;
+    }
+
+    /* Layout */
+    .container {
+      position: relative;
+      z-index: 1;
+      max-width: 860px;
+      margin: 0 auto;
+      padding: 48px 24px 80px;
+    }
+
+    /* Header */
+    header {
+      text-align: center;
+      margin-bottom: 56px;
+    }
+
+    .logo {
+      display: inline-block;
+      font-size: clamp(18px, 5vw, 32px);
+      color: #FFD700;
+      text-shadow: 4px 4px 0 #b8860b, 0 0 24px rgba(255,215,0,0.4);
+      line-height: 1.4;
+      letter-spacing: 2px;
+    }
+
+    .logo span {
+      color: #FF69B4;
+      text-shadow: 4px 4px 0 #c0206a, 0 0 24px rgba(255,105,180,0.4);
+    }
+
+    .subtitle {
+      margin-top: 18px;
+      font-size: clamp(7px, 1.8vw, 10px);
+      color: rgba(255,255,255,0.45);
+      letter-spacing: 3px;
+    }
+
+    /* Blinking cursor decoration */
+    .blink {
+      animation: blink 1s step-end infinite;
+    }
+    @keyframes blink { 50% { opacity: 0; } }
+
+    /* Game grid */
+    .grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fill, minmax(240px, 1fr));
+      gap: 24px;
+    }
+
+    /* Game card */
+    .card {
+      display: block;
+      text-decoration: none;
+      border: 3px solid rgba(255,255,255,0.15);
+      border-radius: 4px;
+      background: rgba(255,255,255,0.04);
+      padding: 28px 20px 22px;
+      transition: border-color 0.15s, transform 0.15s, background 0.15s;
+      position: relative;
+      overflow: hidden;
+    }
+    .card:hover, .card:focus {
+      border-color: #FFD700;
+      background: rgba(255,215,0,0.07);
+      transform: translateY(-4px);
+      outline: none;
+    }
+    .card:hover .arrow { opacity: 1; transform: translateX(0); }
+    .card:hover .card-title { color: #FFD700; }
+
+    /* Corner pixel decoration */
+    .card::before {
+      content: '';
+      position: absolute;
+      top: 0; left: 0;
+      width: 8px; height: 8px;
+      background: #FFD700;
+      opacity: 0;
+      transition: opacity 0.15s;
+    }
+    .card:hover::before { opacity: 1; }
+
+    .card-icon {
+      font-size: 48px;
+      display: block;
+      margin-bottom: 16px;
+      line-height: 1;
+      filter: drop-shadow(0 0 8px rgba(255,215,0,0.3));
+    }
+
+    .card-title {
+      font-size: clamp(9px, 2vw, 11px);
+      color: #fff;
+      margin-bottom: 10px;
+      letter-spacing: 1px;
+      transition: color 0.15s;
+    }
+
+    .card-desc {
+      font-size: clamp(6px, 1.4vw, 8px);
+      color: rgba(255,255,255,0.45);
+      line-height: 1.9;
+      margin-bottom: 16px;
+    }
+
+    .card-tag {
+      display: inline-block;
+      font-size: 6px;
+      padding: 3px 6px;
+      border: 1px solid rgba(255,255,255,0.2);
+      color: rgba(255,255,255,0.4);
+      border-radius: 2px;
+      margin-right: 4px;
+      margin-bottom: 4px;
+    }
+    .card-tag.new {
+      border-color: #ADFF2F;
+      color: #ADFF2F;
+    }
+
+    .arrow {
+      position: absolute;
+      bottom: 18px; right: 18px;
+      font-size: 10px;
+      color: #FFD700;
+      opacity: 0;
+      transform: translateX(-6px);
+      transition: opacity 0.15s, transform 0.15s;
+    }
+
+    /* "Coming soon" card variant */
+    .card.soon {
+      opacity: 0.4;
+      cursor: default;
+      pointer-events: none;
+    }
+    .card.soon .card-title { color: rgba(255,255,255,0.5); }
+
+    /* Footer */
+    footer {
+      text-align: center;
+      margin-top: 56px;
+      font-size: 7px;
+      color: rgba(255,255,255,0.2);
+      letter-spacing: 2px;
+    }
+  </style>
+</head>
+<body>
+
+<canvas id="stars"></canvas>
+<div class="ground"></div>
+
+<div class="container">
+  <header>
+    <div class="logo">THEO'S<br><span>ARCADE</span></div>
+    <p class="subtitle">SELECT YOUR GAME <span class="blink">▮</span></p>
+  </header>
+
+  <div class="grid">
+
+    <!-- Duck Catcher -->
+    <a class="card" href="duck-game.html">
+      <span class="card-icon">🐥</span>
+      <div class="card-title">DUCK CATCHER</div>
+      <div class="card-desc">
+        Guide your rubber duck<br>
+        and catch the bug swarm!
+      </div>
+      <span class="card-tag new">NEW</span>
+      <span class="card-tag">MOUSE</span>
+      <span class="card-tag">ARROWS</span>
+      <span class="card-tag">TOUCH</span>
+      <span class="arrow">▶ PLAY</span>
+    </a>
+
+    <!-- Coming soon placeholders -->
+    <div class="card soon">
+      <span class="card-icon">🚀</span>
+      <div class="card-title">COMING SOON</div>
+      <div class="card-desc">
+        More games on the way…
+      </div>
+      <span class="card-tag">???</span>
+    </div>
+
+    <div class="card soon">
+      <span class="card-icon">🌟</span>
+      <div class="card-title">COMING SOON</div>
+      <div class="card-desc">
+        More games on the way…
+      </div>
+      <span class="card-tag">???</span>
+    </div>
+
+  </div>
+
+  <footer>THEO'S ARCADE &nbsp;·&nbsp; MADE WITH ❤️</footer>
+</div>
+
+<script>
+// ── Starfield ──────────────────────────────────────────────────────────────
+const canvas = document.getElementById('stars');
+const ctx    = canvas.getContext('2d');
+let stars    = [];
+
+function resize() {
+  canvas.width  = window.innerWidth;
+  canvas.height = window.innerHeight;
+  stars = Array.from({ length: 120 }, () => ({
+    x: Math.random() * canvas.width,
+    y: Math.random() * canvas.height * 0.9,
+    r: Math.random() < 0.2 ? 2 : 1,
+    phase: Math.random() * Math.PI * 2,
+  }));
+}
+window.addEventListener('resize', resize);
+resize();
+
+function loop(t) {
+  ctx.clearRect(0, 0, canvas.width, canvas.height);
+  for (const s of stars) {
+    const a = 0.3 + 0.5 * Math.sin(t * 0.0012 + s.phase);
+    ctx.fillStyle = `rgba(255,255,255,${a.toFixed(2)})`;
+    ctx.fillRect(s.x, s.y, s.r, s.r);
+  }
+  requestAnimationFrame(loop);
+}
+requestAnimationFrame(loop);
+</script>
+</body>
+</html>
