@@ -201,28 +201,43 @@ function tickMusic() {
   }
 }
 
+function resetMusicTimers() {
+  const t0 = audioCtx.currentTime + 0.1;
+  melTime = bassTime = pulTime = t0;
+  melIdx  = bassIdx  = pulIdx  = 0;
+}
+
 function initAudio() {
   if (audioCtx) {
-    // iOS suspends the context between gestures — always try to resume
-    audioCtx.resume();
+    if (audioCtx.state === 'suspended') audioCtx.resume().then(resetMusicTimers);
     return;
   }
   const Ctx  = window.AudioContext || window.webkitAudioContext;
   audioCtx   = new Ctx();
-  audioCtx.resume(); // required on iOS Safari
   masterGain = audioCtx.createGain();
-  masterGain.gain.setValueAtTime(muted ? 0 : 0.5, audioCtx.currentTime);
+  masterGain.gain.value = muted ? 0 : 0.5;
   masterGain.connect(audioCtx.destination);
-  const t0 = audioCtx.currentTime + 0.05;
-  melTime = bassTime = pulTime = t0;
+  // Silent 1-frame buffer — unlocks Web Audio on iOS Safari / Chrome iOS
+  const buf = audioCtx.createBuffer(1, 1, audioCtx.sampleRate);
+  const src = audioCtx.createBufferSource();
+  src.buffer = buf;
+  src.connect(audioCtx.destination);
+  src.start(0);
+  audioCtx.resume().then(resetMusicTimers);
 }
 
 function setMute(m) {
   muted = m;
-  if (!audioCtx) return;
-  audioCtx.resume(); // wake suspended context on iOS when user unmutes
-  masterGain.gain.setValueAtTime(muted ? 0 : 0.5, audioCtx.currentTime);
   document.getElementById('mute-btn').textContent = muted ? '🔇' : '🔊';
+  if (!audioCtx) return;
+  if (muted) {
+    masterGain.gain.value = 0;
+  } else {
+    audioCtx.resume().then(() => {
+      masterGain.gain.value = 0.5;
+      resetMusicTimers(); // resync scheduler to current time after resume
+    });
+  }
 }
 
 // Mute button + M key
