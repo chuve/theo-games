@@ -239,6 +239,28 @@ body {
   0%   { transform: translateY(-20px) rotate(0deg); opacity: 1; }
   100% { transform: translateY(110vh) rotate(720deg); opacity: 0; }
 }
+
+.nav-btn {
+  position: fixed; top: 10px; z-index: 20;
+  background: rgba(255,255,255,0.1);
+  border: 2px solid rgba(255,255,255,0.2);
+  border-radius: 10px; color: #fff;
+  font-size: 1rem; padding: 5px 11px;
+  cursor: pointer; font-family: inherit;
+}
+#mode-btn { left: 12px; }
+#mode-btn.active { background: rgba(255,221,0,0.18); border-color: #ffdd00; color: #ffdd00; }
+
+.piece-btn.g-target {
+  border-color: #ffdd00 !important;
+  box-shadow: 0 0 0 3px #ffdd00, 0 0 26px rgba(255,221,0,0.85) !important;
+  animation: gPulse 0.5s ease-in-out infinite alternate !important;
+}
+.piece-btn.g-dim { opacity: 0.22 !important; animation: none !important; }
+@keyframes gPulse {
+  from { transform: scale(1); }
+  to   { transform: scale(1.13); }
+}
 </style>
 </head>
 <body>
@@ -246,7 +268,8 @@ body {
 <canvas id="stars-bg"></canvas>
 
 <div id="title">🚀 Build Starship!</div>
-<a id="home-btn" href="index.html">🏠</a>
+<a  id="home-btn" class="nav-btn" href="index.html">🏠</a>
+<button id="mode-btn" class="nav-btn" onclick="toggleMode()">🎯 Guided</button>
 
 <div id="game-area">
   <div id="stage-wrapper">
@@ -572,6 +595,12 @@ function renderPieces() {
     btn.onclick = () => placePiece(p.id);
     area.appendChild(btn);
   });
+
+  if (guidedMode) {
+    startGuidedSeq();
+    applyGuidedHighlight();
+    setTimeout(speakTarget, 700);
+  }
 }
 
 document.addEventListener('keydown', e => {
@@ -582,6 +611,19 @@ document.addEventListener('keydown', e => {
 // ── Game logic ────────────────────────────────────────────────────────────
 function placePiece(id) {
   if (placed.has(id)) return;
+
+  if (guidedMode && id !== guidedSeq[guidedIdx]) {
+    const btn = document.getElementById('piece-' + id);
+    if (btn) {
+      btn.style.borderColor = '#ff4444';
+      btn.style.boxShadow   = '0 0 18px rgba(255,68,68,0.9)';
+      setTimeout(() => { btn.style.borderColor = ''; btn.style.boxShadow = ''; }, 500);
+    }
+    playTone(160, 0.28, 'sawtooth', 0.3);
+    return;
+  }
+
+  if (guidedMode) guidedIdx++;
   placed.add(id);
 
   const slot = document.getElementById('slot-' + id);
@@ -596,7 +638,11 @@ function placePiece(id) {
   if (btn) btn.classList.add('used');
 
   playPlaceSound(placed.size - 1);
-  if (placed.size === PIECES.length) setTimeout(showLaunchButton, 400);
+  if (placed.size === PIECES.length) {
+    setTimeout(showLaunchButton, 400);
+  } else if (guidedMode) {
+    setTimeout(() => { applyGuidedHighlight(); speakTarget(); }, 380);
+  }
 }
 
 function showLaunchButton() {
@@ -637,6 +683,62 @@ function playCelebration() {
   [523, 659, 784, 1047].forEach((f, i) => setTimeout(() => playTone(f, 0.4, 'triangle', 0.5), i * 160));
 }
 
+// ── Guided Mode ───────────────────────────────────────────────────────────
+const ELEVEN_KEY   = 'REMOVED';
+const ELEVEN_VOICE = '21m00Tcm4TlvDq8ikWAM'; // Rachel
+
+let guidedMode = false;
+let guidedSeq  = [];
+let guidedIdx  = 0;
+
+function toggleMode() {
+  guidedMode = !guidedMode;
+  const btn = document.getElementById('mode-btn');
+  btn.textContent = guidedMode ? '🎯 ON' : '🎯 Guided';
+  btn.classList.toggle('active', guidedMode);
+  resetGame();
+}
+
+function startGuidedSeq() {
+  guidedSeq = [...PIECES].map(p => p.id).sort(() => Math.random() - 0.5);
+  guidedIdx = 0;
+}
+
+function getTargetNum() {
+  const id = guidedSeq[guidedIdx];
+  for (const [n, pid] of Object.entries(pieceKeyMap)) { if (pid === id) return n; }
+  return '?';
+}
+
+function applyGuidedHighlight() {
+  PIECES.forEach(p => {
+    const btn = document.getElementById('piece-' + p.id);
+    if (!btn || btn.classList.contains('used')) return;
+    const isTarget = p.id === guidedSeq[guidedIdx];
+    btn.classList.toggle('g-target', isTarget);
+    btn.classList.toggle('g-dim',    !isTarget);
+  });
+}
+
+async function speakTarget() {
+  if (!guidedMode || guidedIdx >= guidedSeq.length) return;
+  const id    = guidedSeq[guidedIdx];
+  const piece = PIECES.find(p => p.id === id);
+  const num   = getTargetNum();
+  const text  = `Press number ${num}! Add the ${piece.label}!`;
+  try {
+    const res = await fetch(`https://api.elevenlabs.io/v1/text-to-speech/${ELEVEN_VOICE}`, {
+      method: 'POST',
+      headers: { 'Accept': 'audio/mpeg', 'Content-Type': 'application/json', 'xi-api-key': ELEVEN_KEY },
+      body: JSON.stringify({ text, model_id: 'eleven_turbo_v2', voice_settings: { stability: 0.5, similarity_boost: 0.75 } })
+    });
+    if (!res.ok) return;
+    const buf = await getAudio().decodeAudioData(await res.arrayBuffer());
+    const src = getAudio().createBufferSource();
+    src.buffer = buf; src.connect(getAudio().destination); src.start();
+  } catch(e) { console.warn('ElevenLabs:', e); }
+}
+
 function spawnConfetti() {
   const colors = ['#ff4444','#44ff88','#4488ff','#ffff44','#ff44ff','#44ffff','#ff8844'];
   for (let i = 0; i < 80; i++) {
@@ -655,6 +757,7 @@ function spawnConfetti() {
 
 function resetGame() {
   placed.clear();
+  guidedIdx = 0;
   document.getElementById('celebration').classList.remove('show');
   document.getElementById('launch-btn').classList.remove('show');
   document.getElementById('pieces-area').style.pointerEvents = '';
