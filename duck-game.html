@@ -100,6 +100,8 @@
     </svg>
   </button>
   <button id="mute-btn" class="hud-btn" title="Toggle sound (M)">&#x1F507;</button>
+  <audio id="bg-music"     src="music.mp3" loop preload="auto"></audio>
+  <audio id="catch-sound"  src="catch.mp3"      preload="auto"></audio>
 
   <div id="settings-panel">
     <div class="section-label">Worms on screen</div>
@@ -118,138 +120,35 @@ const scoreEl = document.getElementById('score');
 
 let W = 0, H = 0;
 
-// ─── AUDIO (Web Audio API — 8-bit chiptune) ──────────────────────────────────
-let audioCtx   = null;
-let masterGain = null;
-let muted      = true;
-
-// Note frequencies (Hz)
-const C3=130.81,D3=146.83,E3=164.81,F3=174.61,G3=196.00,A3=220.00,B3=246.94;
-const C4=261.63,D4=293.66,E4=329.63,F4=349.23,G4=392.00,A4=440.00,B4=493.88;
-const C5=523.25,D5=587.33,E5=659.26,F5=698.46,G5=783.99,A5=880.00,B5=987.77;
-const R = 0; // rest
-
-const BPM  = 160;
-const BEAT = 60 / BPM;
-
-// Cheerful 8-bit melody loop (freq, beat-length)
-const MELODY = [
-  // Phrase A — bouncy intro
-  [E5,0.5],[D5,0.5],[C5,1],  [G5,0.5],[E5,0.5],[C5,1],
-  [D5,0.5],[E5,0.5],[F5,0.5],[E5,0.5],[D5,1],  [R,0.5],
-  // Phrase B
-  [G5,0.5],[F5,0.5],[E5,1],  [C5,0.5],[E5,0.5],[G5,1],
-  [A5,0.5],[G5,0.5],[E5,0.5],[D5,0.5],[C5,2],
-  // Phrase C — bridge
-  [E5,0.5],[G5,0.5],[A5,1],  [G5,0.5],[E5,0.5],[D5,1],
-  [C5,0.5],[D5,0.5],[E5,0.5],[D5,0.5],[C5,1],  [R,0.5],
-  // Phrase D — resolution
-  [C5,0.5],[E5,0.5],[G5,0.5],[A5,0.5],[G5,1],  [E5,1],
-  [D5,0.5],[C5,0.5],[D5,0.5],[E5,0.5],[C5,2],  [R,0.5],
-];
-
-// Bass / harmony (triangle wave)
-const BASS = [
-  [C3,1],[C3,1],[G3,1],[G3,1],
-  [A3,1],[A3,1],[F3,1],[G3,1],
-  [C3,1],[C3,1],[G3,1],[E3,1],
-  [F3,1],[G3,1],[C3,1],[R,1],
-];
-
-// Rhythmic "blip" pulse on off-beats (adds chiptune energy)
-const PULSE = [
-  [R,1],[C5,0.25],[R,0.75],[R,1],[G4,0.25],[R,0.75],
-  [R,1],[A4,0.25],[R,0.75],[R,1],[E4,0.25],[R,0.75],
-];
-
-let melIdx=0,  melTime=0;
-let bassIdx=0, bassTime=0;
-let pulIdx=0,  pulTime=0;
-const LOOKAHEAD = 0.1;
-
-function schedOsc(freq, type, t, dur, vol) {
-  if (!audioCtx || freq === 0) return;
-  const osc  = audioCtx.createOscillator();
-  const gain = audioCtx.createGain();
-  osc.connect(gain);
-  gain.connect(masterGain);
-  osc.type = type;
-  osc.frequency.setValueAtTime(freq, t);
-  gain.gain.setValueAtTime(vol, t);
-  gain.gain.exponentialRampToValueAtTime(0.0001, t + dur * 0.88);
-  osc.start(t);
-  osc.stop(t + dur);
-}
-
-function tickMusic() {
-  if (!audioCtx) return;
-  const now = audioCtx.currentTime;
-  while (melTime < now + LOOKAHEAD) {
-    const [f, b] = MELODY[melIdx % MELODY.length];
-    schedOsc(f, 'square', melTime, b * BEAT, 0.10);
-    melTime += b * BEAT; melIdx++;
-  }
-  while (bassTime < now + LOOKAHEAD) {
-    const [f, b] = BASS[bassIdx % BASS.length];
-    schedOsc(f, 'triangle', bassTime, b * BEAT, 0.07);
-    bassTime += b * BEAT; bassIdx++;
-  }
-  while (pulTime < now + LOOKAHEAD) {
-    const [f, b] = PULSE[pulIdx % PULSE.length];
-    schedOsc(f, 'square', pulTime, b * BEAT, 0.05);
-    pulTime += b * BEAT; pulIdx++;
-  }
-}
-
-function resetMusicTimers() {
-  const t0 = audioCtx.currentTime + 0.1;
-  melTime = bassTime = pulTime = t0;
-  melIdx  = bassIdx  = pulIdx  = 0;
-}
-
-function initAudio() {
-  if (audioCtx) {
-    if (audioCtx.state === 'suspended') audioCtx.resume().then(resetMusicTimers);
-    return;
-  }
-  const Ctx  = window.AudioContext || window.webkitAudioContext;
-  audioCtx   = new Ctx();
-  masterGain = audioCtx.createGain();
-  masterGain.gain.value = muted ? 0 : 0.5;
-  masterGain.connect(audioCtx.destination);
-  // Silent 1-frame buffer — unlocks Web Audio on iOS Safari / Chrome iOS
-  const buf = audioCtx.createBuffer(1, 1, audioCtx.sampleRate);
-  const src = audioCtx.createBufferSource();
-  src.buffer = buf;
-  src.connect(audioCtx.destination);
-  src.start(0);
-  audioCtx.resume().then(resetMusicTimers);
-}
+// ─── AUDIO ───────────────────────────────────────────────────────────────────
+let muted     = true;
+const bgMusic    = document.getElementById('bg-music');
+const catchSound = document.getElementById('catch-sound');
 
 function setMute(m) {
   muted = m;
+  bgMusic.muted    = muted;
+  catchSound.muted = muted;
   document.getElementById('mute-btn').textContent = muted ? '🔇' : '🔊';
-  if (!audioCtx) return;
-  if (muted) {
-    masterGain.gain.value = 0;
-  } else {
-    audioCtx.resume().then(() => {
-      masterGain.gain.value = 0.5;
-      resetMusicTimers(); // resync scheduler to current time after resume
-    });
-  }
+}
+
+function startMusic() {
+  if (bgMusic.paused) bgMusic.play().catch(() => {});
+}
+
+function playCatch() {
+  if (muted) return;
+  catchSound.currentTime = 0;
+  catchSound.play().catch(() => {});
 }
 
 // Mute button + M key
 document.getElementById('mute-btn').addEventListener('click', () => {
-  if (!audioCtx) initAudio();
   setMute(!muted);
+  startMusic();
 });
 document.addEventListener('keydown', e => {
-  if (e.key === 'm' || e.key === 'M') {
-    if (!audioCtx) initAudio();
-    setMute(!muted);
-  }
+  if (e.key === 'm' || e.key === 'M') { setMute(!muted); startMusic(); }
 });
 
 // ─── SETTINGS PANEL ──────────────────────────────────────────────────────────
@@ -708,20 +607,20 @@ function setTarget(cx, cy) {
 }
 
 canvas.addEventListener('mousemove', e => {
-  initAudio();
+  startMusic();
   const r = canvas.getBoundingClientRect();
   setTarget(e.clientX - r.left, e.clientY - r.top);
 });
 canvas.addEventListener('touchmove', e => {
   e.preventDefault();
-  initAudio();
+  startMusic();
   const r   = canvas.getBoundingClientRect();
   const t   = e.touches[0];
   setTarget(t.clientX - r.left, t.clientY - r.top);
 }, { passive: false });
 canvas.addEventListener('touchstart', e => {
   e.preventDefault();
-  initAudio();
+  startMusic();
   const r = canvas.getBoundingClientRect();
   const t = e.touches[0];
   setTarget(t.clientX - r.left, t.clientY - r.top);
@@ -763,7 +662,6 @@ function loop(now) {
   updatePops();
   drawPops();
 
-  tickMusic();
   requestAnimationFrame(loop);
 }
 
