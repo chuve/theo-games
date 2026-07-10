@@ -1,0 +1,568 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
+<title>Add It Up! 🍎</title>
+<link href="https://fonts.googleapis.com/css2?family=Press+Start+2P&display=swap" rel="stylesheet">
+<style>
+  * { box-sizing: border-box; margin: 0; padding: 0; touch-action: manipulation; }
+
+  body {
+    background: #0d0d2b;
+    min-height: 100vh;
+    overflow: hidden;
+    font-family: 'Press Start 2P', monospace;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+  }
+
+  #stars-bg {
+    position: fixed;
+    inset: 0;
+    pointer-events: none;
+    z-index: 0;
+  }
+
+  .nav-btn {
+    position: fixed; top: 10px; z-index: 20;
+    background: rgba(255,255,255,0.1);
+    border: 2px solid rgba(255,255,255,0.2);
+    border-radius: 10px; color: #fff;
+    font-size: 1rem; padding: 5px 11px;
+    cursor: pointer; font-family: inherit;
+    text-decoration: none; display: inline-flex; align-items: center;
+  }
+  #home-btn     { right: 12px; }
+  #settings-btn { left: 12px; }
+
+  #settings-panel {
+    display: none;
+    position: fixed;
+    top: 54px; left: 12px;
+    background: rgba(8,8,36,0.97);
+    border: 2px solid rgba(255,255,255,0.35);
+    border-radius: 8px;
+    padding: 18px 18px 14px;
+    z-index: 30;
+    color: #fff;
+    width: 230px;
+    box-shadow: 0 8px 32px rgba(0,0,0,0.6);
+  }
+  #settings-panel.open { display: block; }
+  #settings-panel .section-label {
+    font-size: 7px;
+    color: rgba(255,255,255,0.45);
+    letter-spacing: 2px;
+    margin-bottom: 12px;
+    text-transform: uppercase;
+  }
+  #settings-panel .row { display: flex; align-items: center; gap: 12px; }
+  #max-slider { flex: 1; height: 4px; accent-color: #FFD700; cursor: pointer; }
+  #max-val {
+    font-size: 16px; color: #FFD700; min-width: 20px;
+    text-align: right; text-shadow: 0 0 8px rgba(255,215,0,0.5);
+  }
+
+  #hud {
+    position: fixed;
+    top: 0; left: 0; right: 0;
+    padding: 14px 0;
+    text-align: center;
+    font-size: clamp(12px, 3.5vw, 22px);
+    color: #fff;
+    text-shadow: 3px 3px 0 #000;
+    pointer-events: none;
+    z-index: 10;
+  }
+  #score { color: #FFD700; }
+
+  #game-area {
+    position: relative;
+    width: 100%;
+    min-height: 100vh;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    z-index: 1;
+  }
+
+  #equation {
+    margin-top: 10vmin;
+    font-size: clamp(28px, 9vw, 64px);
+    color: #FFD700;
+    text-align: center;
+    text-shadow: 3px 3px 0 #000;
+  }
+  #equation .op { color: #fff; margin: 0 1vmin; }
+  #q-mark {
+    color: #FF69B4;
+    display: inline-block;
+    animation: qBlink 1.2s ease-in-out infinite;
+  }
+  #q-mark.win {
+    color: #FFD700;
+    animation: popIn 0.4s ease-out;
+  }
+  @keyframes qBlink {
+    0%, 100% { opacity: 1; }
+    50%      { opacity: 0.4; }
+  }
+
+  #groups {
+    flex: 1;
+    width: 100%;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    flex-wrap: wrap;
+    gap: 3vmin;
+    padding: 2vmin 4vw;
+  }
+  .grp {
+    display: flex;
+    flex-wrap: wrap;
+    justify-content: center;
+    gap: 2vmin;
+    max-width: 40vw;
+  }
+  .plus-sign {
+    font-size: 8vmin;
+    color: #FF69B4;
+    transition: opacity 0.5s ease;
+  }
+  .obj {
+    font-size: 11vmin;
+    line-height: 1;
+    animation: popIn 0.35s ease-out backwards;
+  }
+  .obj:nth-child(1) { animation-delay: 0.00s; }
+  .obj:nth-child(2) { animation-delay: 0.06s; }
+  .obj:nth-child(3) { animation-delay: 0.12s; }
+  .obj:nth-child(4) { animation-delay: 0.18s; }
+  .obj:nth-child(5) { animation-delay: 0.24s; }
+  .obj:nth-child(6) { animation-delay: 0.30s; }
+  .obj:nth-child(7) { animation-delay: 0.36s; }
+  .obj:nth-child(8) { animation-delay: 0.42s; }
+  .obj:nth-child(9) { animation-delay: 0.48s; }
+  @keyframes popIn {
+    0%   { transform: scale(0.5); }
+    70%  { transform: scale(1.15); }
+    100% { transform: scale(1); }
+  }
+  @keyframes hop {
+    0%, 100% { transform: translateY(0)        scale(1); }
+    40%      { transform: translateY(-3.5vmin) scale(1.15); }
+  }
+
+  #digit-pad {
+    display: flex;
+    flex-wrap: wrap;
+    justify-content: center;
+    gap: 1.4vmin;
+    padding: 2vmin 3vw 4vmin;
+    max-width: 560px;
+  }
+  .digit-btn {
+    min-width: 64px; min-height: 64px;
+    font-family: inherit;
+    font-size: 20px;
+    background: rgba(255,255,255,0.08);
+    color: #fff;
+    border: 3px solid rgba(255,255,255,0.25);
+    border-radius: 14px;
+    cursor: pointer;
+    -webkit-tap-highlight-color: transparent;
+  }
+  .digit-btn:active { transform: scale(0.9); border-color: #FFD700; }
+
+  #start-overlay {
+    position: fixed; inset: 0; z-index: 50;
+    background: rgba(0,0,0,0.78);
+    display: flex; flex-direction: column;
+    align-items: center; justify-content: center;
+    gap: 2vmin;
+    color: #FFD700;
+    font-size: clamp(1.1rem, 5vw, 2.2rem);
+    text-align: center;
+    cursor: pointer;
+    animation: overlayPulse 1.4s ease-in-out infinite;
+  }
+  #start-overlay.hide { display: none; }
+  @keyframes overlayPulse {
+    0%, 100% { opacity: 1; }
+    50%      { opacity: 0.7; }
+  }
+
+  .confetti-piece {
+    position: fixed;
+    width: 14px; height: 14px;
+    border-radius: 3px;
+    pointer-events: none;
+    z-index: 40;
+    animation: fall linear forwards;
+  }
+  @keyframes fall {
+    0%   { transform: translateY(-20px) rotate(0deg);   opacity: 1; }
+    100% { transform: translateY(110vh) rotate(720deg); opacity: 0; }
+  }
+</style>
+</head>
+<body>
+
+<canvas id="stars-bg"></canvas>
+<a id="home-btn" class="nav-btn" href="index.html">🏠</a>
+<button id="settings-btn" class="nav-btn">⚙️</button>
+
+<div id="settings-panel">
+  <div class="section-label">Biggest Sum</div>
+  <div class="row">
+    <input id="max-slider" type="range" min="4" max="9" value="5">
+    <span id="max-val">5</span>
+  </div>
+</div>
+
+<div id="hud">⭐ <span id="score">0</span></div>
+
+<div id="game-area">
+  <div id="equation">
+    <span id="num-a">2</span><span class="op">+</span><span id="num-b">1</span><span class="op">=</span><span id="q-mark">?</span>
+  </div>
+  <div id="groups">
+    <div class="grp" id="grp-a"></div>
+    <div class="plus-sign" id="plus-sign">+</div>
+    <div class="grp" id="grp-b"></div>
+  </div>
+  <div id="digit-pad">
+    <button class="digit-btn" data-n="1">1</button>
+    <button class="digit-btn" data-n="2">2</button>
+    <button class="digit-btn" data-n="3">3</button>
+    <button class="digit-btn" data-n="4">4</button>
+    <button class="digit-btn" data-n="5">5</button>
+    <button class="digit-btn" data-n="6">6</button>
+    <button class="digit-btn" data-n="7">7</button>
+    <button class="digit-btn" data-n="8">8</button>
+    <button class="digit-btn" data-n="9">9</button>
+  </div>
+</div>
+
+<div id="start-overlay">🍎<br>TAP TO PLAY ▶</div>
+
+<script>
+// ── Starfield ──────────────────────────────────────────────────────────────
+const canvas = document.getElementById('stars-bg');
+const ctx2 = canvas.getContext('2d');
+function resizeCanvas() {
+  canvas.width = window.innerWidth;
+  canvas.height = window.innerHeight;
+}
+resizeCanvas();
+window.addEventListener('resize', resizeCanvas);
+
+const stars = Array.from({length: 120}, () => ({
+  x: Math.random(), y: Math.random(),
+  r: Math.random() * 2 + 0.5,
+  blink: Math.random() * Math.PI * 2
+}));
+
+function drawStars(ts) {
+  ctx2.clearRect(0, 0, canvas.width, canvas.height);
+  stars.forEach(s => {
+    const alpha = 0.5 + 0.5 * Math.sin(s.blink + ts / 1000);
+    ctx2.beginPath();
+    ctx2.arc(s.x * canvas.width, s.y * canvas.height, s.r, 0, Math.PI * 2);
+    ctx2.fillStyle = `rgba(255,255,255,${alpha})`;
+    ctx2.fill();
+  });
+  requestAnimationFrame(drawStars);
+}
+requestAnimationFrame(drawStars);
+
+// ── Audio ──────────────────────────────────────────────────────────────────
+let audioCtx;
+function getAudio() {
+  if (!audioCtx) audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+  if (audioCtx.state === 'suspended') audioCtx.resume();
+  return audioCtx;
+}
+
+function playTone(freq, duration, type = 'sine', vol = 0.35) {
+  const ac = getAudio();
+  const osc = ac.createOscillator();
+  const gain = ac.createGain();
+  osc.connect(gain); gain.connect(ac.destination);
+  osc.type = type;
+  osc.frequency.setValueAtTime(freq, ac.currentTime);
+  gain.gain.setValueAtTime(vol, ac.currentTime);
+  gain.gain.exponentialRampToValueAtTime(0.001, ac.currentTime + duration);
+  osc.start(ac.currentTime);
+  osc.stop(ac.currentTime + duration);
+}
+
+function playArpeggio() {
+  [523, 659, 784].forEach((f, i) => setTimeout(() => playTone(f, 0.2, 'triangle', 0.4), i * 90));
+}
+
+function playCelebration() {
+  const melody = [523, 659, 784, 1047];
+  melody.forEach((f, i) => {
+    setTimeout(() => playTone(f, 0.4, 'triangle', 0.5), i * 160);
+  });
+}
+
+// ── Confetti ─────────────────────────────────────────────────────────────
+function spawnConfetti(n = 80) {
+  const colors = ['#ff4444','#44ff88','#4488ff','#ffff44','#ff44ff','#44ffff','#ff8844'];
+  for (let i = 0; i < n; i++) {
+    setTimeout(() => {
+      const el = document.createElement('div');
+      el.className = 'confetti-piece';
+      el.style.left = Math.random() * 100 + 'vw';
+      el.style.background = colors[Math.floor(Math.random() * colors.length)];
+      el.style.animationDuration = (1.5 + Math.random() * 2) + 's';
+      el.style.borderRadius = Math.random() > 0.5 ? '50%' : '3px';
+      document.body.appendChild(el);
+      setTimeout(() => el.remove(), 4000);
+    }, i * 40);
+  }
+}
+
+// ── Text-to-speech ────────────────────────────────────────────────────────
+const TTS_PROXY = 'https://tts.theo-games.chuve.co';
+
+const idbReady = new Promise(res => {
+  const r = indexedDB.open('tts-cache-v1', 1);
+  r.onupgradeneeded = e => e.target.result.createObjectStore('audio');
+  r.onsuccess = e => res(e.target.result);
+  r.onerror   = () => res(null);
+});
+async function idbGet(key) {
+  const db = await idbReady; if (!db) return null;
+  return new Promise(res => { const r = db.transaction('audio').objectStore('audio').get(key); r.onsuccess = () => res(r.result ?? null); r.onerror = () => res(null); });
+}
+async function idbSet(key, val) {
+  const db = await idbReady; if (!db) return;
+  new Promise(res => { const tx = db.transaction('audio','readwrite'); tx.objectStore('audio').put(val, key); tx.oncomplete = res; });
+}
+
+function speakFallback(text) {
+  window.speechSynthesis.cancel();
+  const u = new SpeechSynthesisUtterance(text);
+  u.lang = 'en-US'; u.rate = 0.88; u.pitch = 1.1; u.volume = 1;
+  const vv = window.speechSynthesis.getVoices();
+  const pick = vv.find(v => v.lang.startsWith('en') && /samantha|karen|moira|zoe|victoria|female/i.test(v.name))
+            || vv.find(v => v.lang.startsWith('en'));
+  if (pick) u.voice = pick;
+  window.speechSynthesis.speak(u);
+}
+
+function playAudioBuf(buf) {
+  const ac = getAudio(), src = ac.createBufferSource();
+  src.buffer = buf; src.connect(ac.destination); src.start();
+  return src;
+}
+
+let currentSrc = null;
+async function speak(text) {
+  try { currentSrc && currentSrc.stop(); } catch(e) {}
+  window.speechSynthesis.cancel();
+  try {
+    const stored = await idbGet(text);
+    if (stored) { currentSrc = playAudioBuf(await getAudio().decodeAudioData(stored)); return; }
+  } catch(e) {}
+  try {
+    const res = await fetch(`${TTS_PROXY}/tts`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ text })
+    });
+    if (!res.ok) throw new Error(res.status);
+    const buf = await res.arrayBuffer();
+    idbSet(text, buf.slice(0));
+    currentSrc = playAudioBuf(await getAudio().decodeAudioData(buf));
+  } catch(e) {
+    speakFallback(text);
+  }
+}
+
+// ── Praise pool ─────────────────────────────────────────────────────────
+const PRAISE = ['Great job!', "You found it!", 'Amazing!', 'Woohoo!'];
+function randomPraise() { return PRAISE[Math.floor(Math.random() * PRAISE.length)]; }
+
+// ── Settings panel ─────────────────────────────────────────────────────
+let maxSum = parseInt(localStorage.getItem('add-max'), 10) || 5;
+const slider    = document.getElementById('max-slider');
+const maxValEl  = document.getElementById('max-val');
+slider.value = maxSum;
+maxValEl.textContent = maxSum;
+
+document.getElementById('settings-btn').addEventListener('click', e => {
+  e.stopPropagation();
+  document.getElementById('settings-panel').classList.toggle('open');
+});
+document.addEventListener('click', e => {
+  const panel = document.getElementById('settings-panel');
+  if (!panel.contains(e.target)) panel.classList.remove('open');
+});
+slider.addEventListener('input', () => {
+  maxSum = parseInt(slider.value, 10);
+  maxValEl.textContent = maxSum;
+  localStorage.setItem('add-max', maxSum);
+});
+
+// ── Game state ───────────────────────────────────────────────────────────
+const SETS = [
+  { e: '🦆', w: 'ducks' },
+  { e: '⭐', w: 'stars' },
+  { e: '🍎', w: 'apples' },
+  { e: '🐟', w: 'fish' },
+  { e: '🎈', w: 'balloons' }
+];
+const NOTES = [261, 294, 330, 349, 392, 440, 494, 523, 587];
+const NUMBER_WORDS = ['One','Two','Three','Four','Five','Six','Seven','Eight','Nine'];
+
+let started      = false;
+let currentSet   = null;
+let a = null, b = null, sum = null, prevKey = null;
+let wrongCount   = 0;
+let inputLocked  = false;
+let score        = 0;
+
+function resetGroupsSkeleton() {
+  document.getElementById('groups').innerHTML =
+    '<div class="grp" id="grp-a"></div><div class="plus-sign" id="plus-sign">+</div><div class="grp" id="grp-b"></div>';
+}
+
+function renderGroups() {
+  const grpA = document.getElementById('grp-a');
+  const grpB = document.getElementById('grp-b');
+  for (let i = 0; i < a; i++) {
+    const s = document.createElement('span');
+    s.className = 'obj';
+    s.textContent = currentSet.e;
+    grpA.appendChild(s);
+  }
+  for (let i = 0; i < b; i++) {
+    const s = document.createElement('span');
+    s.className = 'obj';
+    s.textContent = currentSet.e;
+    grpB.appendChild(s);
+  }
+}
+
+function renderMerged() {
+  const groups = document.getElementById('groups');
+  groups.innerHTML = '<div class="grp" id="merged-row"></div>';
+  const row = document.getElementById('merged-row');
+  for (let i = 0; i < sum; i++) {
+    const s = document.createElement('span');
+    s.className = 'obj';
+    s.textContent = currentSet.e;
+    row.appendChild(s);
+  }
+}
+
+function hopCount(onDone, withVoice) {
+  const objs = document.querySelectorAll('#groups .obj');
+  objs.forEach((el, i) => {
+    setTimeout(() => {
+      el.style.animation = 'hop 0.5s ease-in-out';
+      playTone(NOTES[i % NOTES.length], 0.22, 'triangle', 0.35);
+      if (withVoice) speak(NUMBER_WORDS[i]);
+    }, i * 650);
+  });
+  setTimeout(onDone, objs.length * 650 + 300);
+}
+
+function nextRound() {
+  inputLocked = true;
+  wrongCount = 0;
+  let s, x, y, key;
+  do {
+    s = 2 + Math.floor(Math.random() * (maxSum - 1)); // 2..maxSum
+    x = 1 + Math.floor(Math.random() * (s - 1));       // 1..s-1
+    y = s - x;
+    key = x + '-' + y;
+  } while (key === prevKey && maxSum > 2);
+  a = x; b = y; sum = s; prevKey = key;
+  currentSet = SETS[Math.floor(Math.random() * SETS.length)];
+  document.getElementById('num-a').textContent = a;
+  document.getElementById('num-b').textContent = b;
+  const qm = document.getElementById('q-mark');
+  qm.textContent = '?';
+  qm.classList.remove('win');
+  resetGroupsSkeleton();
+  renderGroups();
+  speak(`What is ${a} plus ${b}?`);
+  setTimeout(() => { inputLocked = false; }, 400);
+}
+
+function correct() {
+  inputLocked = true;
+  const plus = document.getElementById('plus-sign');
+  if (plus) plus.style.opacity = '0';
+  setTimeout(() => {
+    renderMerged();
+    hopCount(() => {
+      const qm = document.getElementById('q-mark');
+      qm.textContent = sum;
+      qm.classList.add('win');
+      playArpeggio();
+      spawnConfetti(15);
+      score++;
+      document.getElementById('score').textContent = score;
+      if (score % 5 === 0) setTimeout(() => { spawnConfetti(80); playCelebration(); }, 150);
+      speak(randomPraise());
+      setTimeout(nextRound, 1600);
+    }, true);
+  }, 500);
+}
+
+function wrong(n) {
+  inputLocked = true;
+  wrongCount++;
+  playTone(196, 0.3, 'sine', 0.18);
+  if (wrongCount === 1) {
+    speak("Let's count them all!");
+    hopCount(() => { inputLocked = false; }, false);
+  } else {
+    hopCount(() => {
+      speak(`What is ${a} plus ${b}?`);
+      setTimeout(() => { inputLocked = false; }, 300);
+    }, true);
+  }
+}
+
+function handleInput(n) {
+  if (inputLocked) return;
+  if (!Number.isInteger(n) || n < 1 || n > 9) return;
+  if (n === sum) correct();
+  else wrong(n);
+}
+
+document.querySelectorAll('.digit-btn').forEach(b => {
+  b.addEventListener('pointerdown', () => handleInput(parseInt(b.dataset.n, 10)));
+});
+
+document.addEventListener('keydown', e => {
+  if (e.repeat || e.metaKey || e.ctrlKey || e.altKey) return;
+  if (e.key.length !== 1) return;
+  const n = parseInt(e.key, 10);
+  if (Number.isNaN(n)) return;
+  handleInput(n);
+});
+
+// ── Start ────────────────────────────────────────────────────────────────
+function startGame() {
+  if (started) return;
+  started = true;
+  getAudio();
+  document.getElementById('start-overlay').classList.add('hide');
+  nextRound();
+}
+document.getElementById('start-overlay').addEventListener('click', startGame);
+document.getElementById('start-overlay').addEventListener('touchstart', e => { e.preventDefault(); startGame(); }, { passive: false });
+</script>
+</body>
+</html>
