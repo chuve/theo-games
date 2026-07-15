@@ -105,8 +105,8 @@
   <div id="settings-panel">
     <div class="section-label">Apple speed</div>
     <div class="row">
-      <input id="speed-slider" type="range" min="1" max="10" value="3">
-      <span id="speed-val">3</span>
+      <input id="speed-slider" type="range" min="1" max="10" value="7">
+      <span id="speed-val">7</span>
     </div>
   </div>
 
@@ -254,13 +254,24 @@ function drawCar(x, y) {
     ctx.fill();
   }
 
-  // Body (rounded red block, facing right)
-  ctx.fillStyle = '#E5241A';
+  // Rear wing / spoiler (black) mounted at the back — matches the reference car
+  ctx.fillStyle = '#1b1b1b';
+  roundRect(-BW / 2 - 3, -BH / 2 - 18, 8, 20, 3);   // upright post
+  ctx.fill();
+  ctx.save();
+  ctx.translate(-BW / 2 + 1, -BH / 2 - 17);
+  ctx.rotate(-0.08);
+  roundRect(-16, -5, 34, 8, 3);                     // wide wing blade
+  ctx.fill();
+  ctx.restore();
+
+  // Body (rounded yellow block, facing right)
+  ctx.fillStyle = '#F5B301';
   roundRect(-BW / 2, -BH / 2, BW, BH, 12);
   ctx.fill();
 
   // Cabin / roof (raised, toward the back-left)
-  ctx.fillStyle = '#C41810';
+  ctx.fillStyle = '#E09E00';
   roundRect(-BW / 2 + 8, -BH / 2 - 16, 44, 22, 8);
   ctx.fill();
 
@@ -270,7 +281,7 @@ function drawCar(x, y) {
   roundRect(-BW / 2 + 32, -BH / 2 - 11, 16, 14, 4); ctx.fill();
 
   // Body highlight strip
-  ctx.fillStyle = '#FF6A5E';
+  ctx.fillStyle = '#FFD84D';
   roundRect(-BW / 2 + 6, -BH / 2 + 5, BW - 12, 6, 3);
   ctx.fill();
 
@@ -304,7 +315,7 @@ function roundRect(x, y, w, h, r) {
 let apples = [];
 let score  = 0;
 
-const SPAWN_MS   = 1100;
+const SPAWN_MS   = 1800;
 let   lastSpawn  = -99999;
 const APPLE_R    = 18;
 
