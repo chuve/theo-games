@@ -126,20 +126,21 @@
   /* Options row */
   #options {
     display: flex;
-    flex-wrap: wrap;
+    flex-wrap: nowrap;
     justify-content: center;
     align-items: flex-end;
-    gap: 2.6vmin;
+    gap: 1.6vmin;
     padding: 3vmin 3vw 4vmin;
     margin-top: auto;
     margin-bottom: 3vmin;
+    width: 100%;
     max-width: 760px;
   }
   .opt {
     position: relative;
-    width: 20vmin;
-    max-width: 150px;
-    min-width: 92px;
+    flex: 1 1 0;
+    min-width: 0;
+    max-width: 160px;
     background: rgba(255,255,255,0.06);
     border: 3px solid rgba(255,255,255,0.22);
     border-radius: 16px;
@@ -427,13 +428,14 @@ const WIN_FILL   = '#3a4a78';
 const FLAME_FILL = '#ffb347';
 const FLAME_LINE = '#ff8c00';
 
-// Each variant differs by nose (point/round/flat/dome), fins (yes/no) and body width.
+// Each variant differs by nose (point/round/dome), fins (yes/no) and body width.
+// Every rocket has a pointed, rounded or domed nose.
 const ROCKETS = [
   { nose: 'point', fins: true,  bodyW: 40 },
   { nose: 'point', fins: false, bodyW: 34 },
   { nose: 'round', fins: true,  bodyW: 52 },
   { nose: 'round', fins: false, bodyW: 36 },
-  { nose: 'flat',  fins: true,  bodyW: 52 },
+  { nose: 'dome',  fins: true,  bodyW: 52 },
   { nose: 'dome',  fins: false, bodyW: 54 },
 ];
 
