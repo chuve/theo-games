@@ -47,6 +47,7 @@
     }
     #mute-btn     { right: 12px; }
     #settings-btn { right: 60px; }
+    #home-btn     { right: 108px; text-decoration: none; }
     #settings-btn svg { display: block; }
 
     #settings-panel {
@@ -100,6 +101,7 @@
     </svg>
   </button>
   <button id="mute-btn" class="hud-btn" title="Toggle sound (M)">&#x1F507;</button>
+  <a id="home-btn" class="hud-btn" href="index.html" title="Home">&#x1F3E0;</a>
   <audio id="catch-sound" src="catch.mp3" preload="auto"></audio>
 
   <div id="settings-panel">
@@ -120,7 +122,7 @@ const scoreEl = document.getElementById('score');
 let W = 0, H = 0;
 
 // ─── AUDIO ───────────────────────────────────────────────────────────────────
-let muted     = true;
+let muted     = false;
 const catchSound = document.getElementById('catch-sound');
 
 function setMute(m) {
@@ -140,6 +142,7 @@ document.getElementById('mute-btn').addEventListener('click', () => setMute(!mut
 document.addEventListener('keydown', e => {
   if (e.key === 'm' || e.key === 'M') setMute(!muted);
 });
+setMute(muted); // sync button icon with default (sound on)
 
 // ─── SETTINGS PANEL ──────────────────────────────────────────────────────────
 const settingsPanel  = document.getElementById('settings-panel');

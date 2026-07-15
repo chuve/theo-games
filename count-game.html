@@ -153,24 +153,6 @@
   }
   .digit-btn:active { transform: scale(0.9); border-color: #FFD700; }
 
-  #start-overlay {
-    position: fixed; inset: 0; z-index: 50;
-    background: rgba(0,0,0,0.78);
-    display: flex; flex-direction: column;
-    align-items: center; justify-content: center;
-    gap: 2vmin;
-    color: #FFD700;
-    font-size: clamp(1.1rem, 5vw, 2.2rem);
-    text-align: center;
-    cursor: pointer;
-    animation: overlayPulse 1.4s ease-in-out infinite;
-  }
-  #start-overlay.hide { display: none; }
-  @keyframes overlayPulse {
-    0%, 100% { opacity: 1; }
-    50%      { opacity: 0.7; }
-  }
-
   .confetti-piece {
     position: fixed;
     width: 14px; height: 14px;
@@ -217,7 +199,6 @@
   </div>
 </div>
 
-<div id="start-overlay">🦆<br>TAP TO PLAY ▶</div>
 
 <script>
 // ── Starfield ──────────────────────────────────────────────────────────────
@@ -508,11 +489,11 @@ function startGame() {
   if (started) return;
   started = true;
   getAudio();
-  document.getElementById('start-overlay').classList.add('hide');
   nextRound();
 }
-document.getElementById('start-overlay').addEventListener('click', startGame);
-document.getElementById('start-overlay').addEventListener('touchstart', e => { e.preventDefault(); startGame(); }, { passive: false });
+// Auto-start; unlock audio on first user gesture (autoplay policy)
+window.addEventListener('pointerdown', () => getAudio(), { once: true });
+startGame();
 </script>
 </body>
 </html>
