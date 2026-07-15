@@ -107,9 +107,20 @@
     animation: floaty 3s ease-in-out infinite;
   }
   #target svg { width: 100%; height: auto; display: block; }
+  #target.paused { animation: none; }
+  #target.hidden { visibility: hidden; }
   @keyframes floaty {
     0%, 100% { transform: translateY(0); }
     50%      { transform: translateY(-1.6vmin); }
+  }
+
+  /* Rocket clone that flies from an option to the target */
+  .flyer { position: fixed; margin: 0; z-index: 45; pointer-events: none;
+           filter: drop-shadow(0 0 14px rgba(120,160,255,0.55)); }
+  .flyer.ignite { animation: ignite 0.4s ease-in-out; }
+  @keyframes ignite {
+    0%,100% { filter: drop-shadow(0 0 14px rgba(120,160,255,0.55)); }
+    50%     { filter: drop-shadow(0 6px 26px rgba(255,150,40,0.95)); }
   }
 
   /* Options row */
@@ -292,6 +303,41 @@ function playCelebration() {
   melody.forEach((f, i) => {
     setTimeout(() => playTone(f, 0.4, 'triangle', 0.5), i * 160);
   });
+}
+
+// Rocket lift-off: filtered-noise rumble + rising whistle.
+function playLaunch() {
+  const ac = getAudio();
+  const t0 = ac.currentTime;
+  const dur = 1.6;
+
+  // Rumble (white noise through a downward-sweeping low-pass)
+  const size = Math.floor(ac.sampleRate * dur);
+  const buffer = ac.createBuffer(1, size, ac.sampleRate);
+  const data = buffer.getChannelData(0);
+  for (let i = 0; i < size; i++) data[i] = Math.random() * 2 - 1;
+  const noise = ac.createBufferSource(); noise.buffer = buffer;
+  const lp = ac.createBiquadFilter();
+  lp.type = 'lowpass';
+  lp.frequency.setValueAtTime(500, t0);
+  lp.frequency.exponentialRampToValueAtTime(120, t0 + dur);
+  const ng = ac.createGain();
+  ng.gain.setValueAtTime(0.0001, t0);
+  ng.gain.exponentialRampToValueAtTime(0.5, t0 + 0.18);
+  ng.gain.exponentialRampToValueAtTime(0.001, t0 + dur);
+  noise.connect(lp); lp.connect(ng); ng.connect(ac.destination);
+  noise.start(t0); noise.stop(t0 + dur);
+
+  // Rising whistle
+  const osc = ac.createOscillator(); osc.type = 'sawtooth';
+  osc.frequency.setValueAtTime(180, t0);
+  osc.frequency.exponentialRampToValueAtTime(900, t0 + dur * 0.85);
+  const og = ac.createGain();
+  og.gain.setValueAtTime(0.0001, t0);
+  og.gain.exponentialRampToValueAtTime(0.16, t0 + 0.3);
+  og.gain.exponentialRampToValueAtTime(0.001, t0 + dur);
+  osc.connect(og); og.connect(ac.destination);
+  osc.start(t0); osc.stop(t0 + dur);
 }
 
 // ── Confetti ─────────────────────────────────────────────────────────────
@@ -486,8 +532,10 @@ function nextRound() {
   shuffle(chosen);
   correctSlot = chosen.indexOf(targetIdx);
 
-  // Render target
-  document.getElementById('target').innerHTML = rocketSVG(ROCKETS[targetIdx]);
+  // Render target (restore visibility + floaty bob from any prior launch)
+  const targetEl = document.getElementById('target');
+  targetEl.classList.remove('hidden', 'paused');
+  targetEl.innerHTML = rocketSVG(ROCKETS[targetIdx]);
 
   // Render options
   const optWrap = document.getElementById('options');
@@ -509,41 +557,86 @@ function tileAt(slot) {
   return document.querySelector(`.opt[data-slot="${slot}"]`);
 }
 
-function correct(slot) {
-  inputLocked = true;
-  const tile = tileAt(slot);
-  tile.classList.add('correct-pick');
-  document.querySelectorAll('.opt.hint').forEach(el => el.classList.remove('hint'));
-  playArpeggio();
-  spawnConfetti(15);
-  score++;
-  document.getElementById('score').textContent = score;
-  if (score % 5 === 0) setTimeout(() => { spawnConfetti(80); playCelebration(); }, 150);
-  speak(randomPraise());
-  setTimeout(nextRound, 1500);
+// Clone the tapped option's rocket and fly it up to overlap the target.
+// Calls onArrive(ctx) once it lands, where ctx = { clone, dx, dy, scale }.
+function flyToTarget(tile, onArrive) {
+  const svg = tile.querySelector('svg');
+  const targetEl = document.getElementById('target');
+  targetEl.classList.add('paused');                 // stop the bob so the landing is stable
+  const from = svg.getBoundingClientRect();
+  const to   = targetEl.querySelector('svg').getBoundingClientRect();
+
+  const clone = svg.cloneNode(true);
+  clone.classList.add('flyer');
+  clone.style.left   = from.left + 'px';
+  clone.style.top    = from.top + 'px';
+  clone.style.width  = from.width + 'px';
+  clone.style.height = 'auto';
+  document.body.appendChild(clone);
+  tile.style.visibility = 'hidden';
+
+  const dx = (to.left + to.width / 2) - (from.left + from.width / 2);
+  const dy = (to.top + to.height / 2) - (from.top + from.height / 2);
+  const scale = to.width / from.width;
+
+  clone.style.transition = 'transform 0.5s cubic-bezier(.5,0,.3,1)';
+  requestAnimationFrame(() => {
+    clone.style.transform = `translate(${dx}px, ${dy}px) scale(${scale})`;
+  });
+  setTimeout(() => onArrive({ clone, dx, dy, scale }), 520);
 }
 
-function wrong(slot) {
-  inputLocked = true;
+function correctLaunch(ctx) {
+  document.getElementById('target').classList.add('hidden');   // hide the underlying target
+  document.querySelectorAll('.opt.hint').forEach(el => el.classList.remove('hint'));
+
+  // Ignition wobble + blip, then blast off-screen.
+  ctx.clone.classList.add('ignite');
+  playTone(110, 0.35, 'sawtooth', 0.25);
+  setTimeout(() => {
+    const liftY = ctx.dy - window.innerHeight * 1.3;
+    ctx.clone.style.transition = 'transform 1.15s cubic-bezier(.45,0,.75,.25)';
+    ctx.clone.style.transform = `translate(${ctx.dx}px, ${liftY}px) scale(${ctx.scale})`;
+    playLaunch();
+    score++;
+    document.getElementById('score').textContent = score;
+    speak(randomPraise());
+    if (score % 5 === 0) { setTimeout(() => { spawnConfetti(80); playCelebration(); }, 250); }
+    else spawnConfetti(24);
+  }, 420);
+
+  setTimeout(() => { ctx.clone.remove(); nextRound(); }, 420 + 1250);
+}
+
+function wrongReturn(ctx, tile) {
   wrongCount++;
-  const tile = tileAt(slot);
-  tile.classList.add('wrong-pick');
-  setTimeout(() => tile.classList.remove('wrong-pick'), 450);
   playTone(196, 0.3, 'sine', 0.18);
-  if (wrongCount === 1) {
-    speak('Try again!');
-  } else {
-    speak('This one!');
-    tileAt(correctSlot).classList.add('hint');   // show the answer after 2nd miss
-  }
-  setTimeout(() => { inputLocked = false; }, 500);
+  speak(wrongCount === 1 ? 'Try again!' : 'This one!');
+  document.getElementById('target').classList.remove('paused');
+
+  // Fly the clone back to its slot, then restore the tile.
+  ctx.clone.style.transition = 'transform 0.4s ease-in';
+  ctx.clone.style.transform = 'translate(0, 0) scale(1)';
+  setTimeout(() => {
+    ctx.clone.remove();
+    tile.style.visibility = 'visible';
+    tile.classList.add('wrong-pick');
+    setTimeout(() => tile.classList.remove('wrong-pick'), 450);
+    if (wrongCount >= 2) tileAt(correctSlot).classList.add('hint');   // reveal answer after 2nd miss
+    inputLocked = false;
+  }, 420);
 }
 
 function handleSlot(slot) {
   if (inputLocked) return;
   if (!Number.isInteger(slot) || slot < 0 || slot >= optionCount) return;
-  if (slot === correctSlot) correct(slot);
-  else wrong(slot);
+  inputLocked = true;
+  const tile = tileAt(slot);
+  const isRight = slot === correctSlot;
+  flyToTarget(tile, ctx => {
+    if (isRight) correctLaunch(ctx);
+    else wrongReturn(ctx, tile);
+  });
 }
 
 document.getElementById('options').addEventListener('pointerdown', e => {
