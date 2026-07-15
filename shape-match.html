@@ -410,16 +410,35 @@ const WIN_FILL   = '#3a4a78';
 const FLAME_FILL = '#ffb347';
 const FLAME_LINE = '#ff8c00';
 
-// Each variant differs by nose (point/round/dome), fins (yes/no) and body width.
-// Every rocket has a pointed, rounded or domed nose.
+// 20 distinct rocket shapes. Each varies by nose (point/needle/round/dome),
+// fins (none/small/tall) and body width. Every rocket has a nose.
 const ROCKETS = [
-  { nose: 'point', fins: true,  bodyW: 40 },
-  { nose: 'point', fins: false, bodyW: 34 },
-  { nose: 'round', fins: true,  bodyW: 52 },
-  { nose: 'round', fins: false, bodyW: 36 },
-  { nose: 'dome',  fins: true,  bodyW: 52 },
-  { nose: 'dome',  fins: false, bodyW: 54 },
+  { nose: 'point',  fins: 'none',  bodyW: 34 },
+  { nose: 'point',  fins: 'small', bodyW: 40 },
+  { nose: 'point',  fins: 'tall',  bodyW: 46 },
+  { nose: 'point',  fins: 'small', bodyW: 54 },
+  { nose: 'point',  fins: 'tall',  bodyW: 36 },
+  { nose: 'needle', fins: 'none',  bodyW: 30 },
+  { nose: 'needle', fins: 'small', bodyW: 36 },
+  { nose: 'needle', fins: 'small', bodyW: 46 },
+  { nose: 'needle', fins: 'tall',  bodyW: 42 },
+  { nose: 'round',  fins: 'none',  bodyW: 36 },
+  { nose: 'round',  fins: 'none',  bodyW: 52 },
+  { nose: 'round',  fins: 'small', bodyW: 46 },
+  { nose: 'round',  fins: 'small', bodyW: 36 },
+  { nose: 'round',  fins: 'tall',  bodyW: 54 },
+  { nose: 'dome',   fins: 'none',  bodyW: 44 },
+  { nose: 'dome',   fins: 'none',  bodyW: 54 },
+  { nose: 'dome',   fins: 'small', bodyW: 40 },
+  { nose: 'dome',   fins: 'small', bodyW: 50 },
+  { nose: 'dome',   fins: 'tall',  bodyW: 46 },
+  { nose: 'point',  fins: 'none',  bodyW: 48 },
 ];
+
+// Two shapes read as "different" if the nose, the fins, or the width differ clearly.
+function distinct(a, b) {
+  return a.nose !== b.nose || a.fins !== b.fins || Math.abs(a.bodyW - b.bodyW) >= 12;
+}
 
 function rocketSVG(v) {
   const cx = 50;
@@ -427,14 +446,17 @@ function rocketSVG(v) {
   const left = cx - bw / 2;
   const right = cx + bw / 2;
   const bodyBottom = 128;
-  const bodyTop = v.nose === 'flat' ? 40 : 60;
+  const bodyTop = 60;
   const P = [];
 
-  // Fins (drawn behind the body)
-  if (v.fins) {
-    const finTop = bodyBottom - 34;
-    P.push(`<path d="M${left} ${finTop} L${left - 18} ${bodyBottom + 6} L${left} ${bodyBottom} Z" fill="${RKT_FILL}" stroke="${RKT_STROKE}" stroke-width="3" stroke-linejoin="round"/>`);
-    P.push(`<path d="M${right} ${finTop} L${right + 18} ${bodyBottom + 6} L${right} ${bodyBottom} Z" fill="${RKT_FILL}" stroke="${RKT_STROKE}" stroke-width="3" stroke-linejoin="round"/>`);
+  // Fins (drawn behind the body): 'small' or 'tall'
+  if (v.fins && v.fins !== 'none') {
+    const tall = v.fins === 'tall';
+    const finTop = bodyBottom - (tall ? 48 : 34);
+    const out    = tall ? 22 : 18;
+    const drop   = tall ? 10 : 6;
+    P.push(`<path d="M${left} ${finTop} L${left - out} ${bodyBottom + drop} L${left} ${bodyBottom} Z" fill="${RKT_FILL}" stroke="${RKT_STROKE}" stroke-width="3" stroke-linejoin="round"/>`);
+    P.push(`<path d="M${right} ${finTop} L${right + out} ${bodyBottom + drop} L${right} ${bodyBottom} Z" fill="${RKT_FILL}" stroke="${RKT_STROKE}" stroke-width="3" stroke-linejoin="round"/>`);
   }
 
   // Flames (behind the body base)
@@ -444,11 +466,13 @@ function rocketSVG(v) {
   let nose;
   if (v.nose === 'point') {
     nose = `L${left} ${bodyTop} L${cx} ${bodyTop - 46} L${right} ${bodyTop}`;
+  } else if (v.nose === 'needle') {
+    nose = `L${left} ${bodyTop} L${cx} ${bodyTop - 56} L${right} ${bodyTop}`;
   } else if (v.nose === 'round') {
     nose = `L${left} ${bodyTop} C${left} ${bodyTop - 48} ${right} ${bodyTop - 48} ${right} ${bodyTop}`;
   } else if (v.nose === 'dome') {
     nose = `L${left} ${bodyTop} C${left - 4} ${bodyTop - 30} ${right + 4} ${bodyTop - 30} ${right} ${bodyTop}`;
-  } else { // flat
+  } else { // flat (unused fallback)
     nose = `L${left} ${bodyTop} L${right} ${bodyTop}`;
   }
   P.push(`<path d="M${left} ${bodyBottom} ${nose} L${right} ${bodyBottom} Z" fill="${RKT_FILL}" stroke="${RKT_STROKE}" stroke-width="3.5" stroke-linejoin="round"/>`);
@@ -509,10 +533,19 @@ function nextRound() {
   prevTarget = t;
   wrongCount = 0;
 
-  // Build option set: the answer + distinct distractors
-  const others = ROCKETS.map((_, i) => i).filter(i => i !== targetIdx);
-  shuffle(others);
-  const chosen = [targetIdx, ...others.slice(0, optionCount - 1)];
+  // Build option set: the answer + distractors that each look clearly
+  // different from the answer AND from every other chosen tile.
+  const pool = shuffle(ROCKETS.map((_, i) => i).filter(i => i !== targetIdx));
+  const chosen = [targetIdx];
+  for (const i of pool) {
+    if (chosen.length >= optionCount) break;
+    if (chosen.every(j => distinct(ROCKETS[i], ROCKETS[j]))) chosen.push(i);
+  }
+  // Fallback (shouldn't trigger with 20 shapes): fill any remaining slots.
+  for (const i of pool) {
+    if (chosen.length >= optionCount) break;
+    if (!chosen.includes(i)) chosen.push(i);
+  }
   shuffle(chosen);
   correctSlot = chosen.indexOf(targetIdx);
 
