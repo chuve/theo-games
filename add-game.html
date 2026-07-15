@@ -410,6 +410,11 @@ slider.addEventListener('input', () => {
   maxValEl.textContent = maxSum;
   localStorage.setItem('add-max', maxSum);
 });
+slider.addEventListener('change', () => {
+  // Refresh the on-screen problem immediately so the new range is visibly in effect,
+  // rather than only applying starting from whichever round comes next.
+  if (started && !inputLocked) nextRound();
+});
 
 // ── Game state ───────────────────────────────────────────────────────────
 const SETS = [

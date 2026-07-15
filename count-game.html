@@ -380,6 +380,11 @@ slider.addEventListener('input', () => {
   maxValEl.textContent = maxNumber;
   localStorage.setItem('count-max', maxNumber);
 });
+slider.addEventListener('change', () => {
+  // Refresh the on-screen round immediately so the new range is visibly in effect,
+  // rather than only applying starting from whichever round comes next.
+  if (started && !inputLocked) nextRound();
+});
 
 // ── Game state ───────────────────────────────────────────────────────────
 const SETS = [
