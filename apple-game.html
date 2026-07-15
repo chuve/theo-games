@@ -1,0 +1,540 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
+  <title>Apple Road!</title>
+  <link href="https://fonts.googleapis.com/css2?family=Press+Start+2P&display=swap" rel="stylesheet">
+  <style>
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+    body { background: #0d0d2b; overflow: hidden; touch-action: none; }
+    canvas { display: block; }
+    #hud {
+      position: fixed;
+      top: 0; left: 0; right: 0;
+      padding: 14px 0;
+      text-align: center;
+      font-family: 'Press Start 2P', monospace;
+      font-size: clamp(12px, 3.5vw, 22px);
+      color: #fff;
+      text-shadow: 3px 3px 0 #000;
+      pointer-events: none;
+      z-index: 10;
+    }
+    #score { color: #FFD700; }
+    .hud-btn {
+      position: fixed;
+      top: 12px;
+      width: 40px;
+      height: 40px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      background: rgba(0,0,0,0.55);
+      border: 2px solid rgba(255,255,255,0.55);
+      border-radius: 6px;
+      color: #fff;
+      font-size: 20px;
+      line-height: 1;
+      cursor: pointer;
+      z-index: 20;
+      padding: 0;
+      transition: background 0.12s, border-color 0.12s;
+    }
+    .hud-btn:hover {
+      background: rgba(255,255,255,0.15);
+      border-color: rgba(255,255,255,0.85);
+    }
+    #mute-btn     { right: 12px; }
+    #settings-btn { right: 60px; }
+    #settings-btn svg { display: block; }
+
+    #settings-panel {
+      display: none;
+      position: fixed;
+      top: 62px; right: 12px;
+      background: rgba(8,8,36,0.97);
+      border: 2px solid rgba(255,255,255,0.35);
+      border-radius: 8px;
+      padding: 18px 18px 14px;
+      z-index: 30;
+      font-family: 'Press Start 2P', monospace;
+      color: #fff;
+      width: 230px;
+      box-shadow: 0 8px 32px rgba(0,0,0,0.6);
+    }
+    #settings-panel.open { display: block; }
+    #settings-panel .section-label {
+      font-size: 7px;
+      color: rgba(255,255,255,0.45);
+      letter-spacing: 2px;
+      margin-bottom: 12px;
+      text-transform: uppercase;
+    }
+    #settings-panel .row {
+      display: flex;
+      align-items: center;
+      gap: 12px;
+    }
+    #speed-slider {
+      flex: 1;
+      height: 4px;
+      accent-color: #FFD700;
+      cursor: pointer;
+    }
+    #speed-val {
+      font-size: 16px;
+      color: #FFD700;
+      min-width: 20px;
+      text-align: right;
+      text-shadow: 0 0 8px rgba(255,215,0,0.5);
+    }
+  </style>
+</head>
+<body>
+  <div id="hud">&#x1F34E; CAUGHT: <span id="score">0</span></div>
+  <button id="settings-btn" class="hud-btn" title="Settings">
+    <svg width="20" height="20" viewBox="0 0 20 20" fill="none" xmlns="http://www.w3.org/2000/svg">
+      <circle cx="10" cy="10" r="3" stroke="white" stroke-width="2"/>
+      <path d="M10 1v2M10 17v2M1 10h2M17 10h2M3.22 3.22l1.41 1.41M15.36 15.36l1.41 1.41M3.22 16.78l1.41-1.41M15.36 4.64l1.41-1.41" stroke="white" stroke-width="2" stroke-linecap="round"/>
+    </svg>
+  </button>
+  <button id="mute-btn" class="hud-btn" title="Toggle sound (M)">&#x1F507;</button>
+  <audio id="catch-sound" src="catch.mp3" preload="auto"></audio>
+
+  <div id="settings-panel">
+    <div class="section-label">Apple speed</div>
+    <div class="row">
+      <input id="speed-slider" type="range" min="1" max="10" value="3">
+      <span id="speed-val">3</span>
+    </div>
+  </div>
+
+  <canvas id="game"></canvas>
+
+<script>
+const canvas = document.getElementById('game');
+const ctx    = canvas.getContext('2d');
+const scoreEl = document.getElementById('score');
+
+let W = 0, H = 0;
+
+// ─── AUDIO ───────────────────────────────────────────────────────────────────
+let muted     = true;
+const catchSound = document.getElementById('catch-sound');
+
+function setMute(m) {
+  muted = m;
+  catchSound.muted = muted;
+  document.getElementById('mute-btn').textContent = muted ? '🔇' : '🔊';
+}
+
+function playCatch() {
+  if (muted) return;
+  catchSound.currentTime = 0;
+  catchSound.play().catch(() => {});
+}
+
+// Mute button + M key
+document.getElementById('mute-btn').addEventListener('click', () => setMute(!muted));
+document.addEventListener('keydown', e => {
+  if (e.key === 'm' || e.key === 'M') setMute(!muted);
+});
+
+// ─── SETTINGS PANEL ──────────────────────────────────────────────────────────
+const settingsPanel  = document.getElementById('settings-panel');
+const slider         = document.getElementById('speed-slider');
+const speedVal       = document.getElementById('speed-val');
+
+// Base pixel/frame speed derived from the slider (1–10 → gentle range).
+let APPLE_SPEED = 1.4;
+function speedFromSlider(v) { return 0.8 + (v - 1) * 0.32; } // 1→0.8 … 10→3.68
+
+document.getElementById('settings-btn').addEventListener('click', e => {
+  e.stopPropagation();
+  settingsPanel.classList.toggle('open');
+});
+document.addEventListener('click', e => {
+  if (!settingsPanel.contains(e.target)) settingsPanel.classList.remove('open');
+});
+slider.addEventListener('input', () => {
+  APPLE_SPEED = speedFromSlider(parseInt(slider.value));
+  speedVal.textContent = slider.value;
+});
+APPLE_SPEED = speedFromSlider(parseInt(slider.value));
+
+// ─── ROAD LAYOUT ─────────────────────────────────────────────────────────────
+// Three lanes span a central road; grass strips top & bottom.
+const LANES     = 3;
+const GRASS     = 46;           // grass strip height top & bottom
+let   roadTop   = 0;
+let   roadH     = 0;
+let   laneH     = 0;
+const laneY     = [];           // center Y of each lane
+const CAR_X_FRAC = 0.18;        // car horizontal position (fraction of W)
+let   carX      = 0;
+
+function computeLanes() {
+  roadTop = GRASS;
+  roadH   = H - GRASS * 2;
+  laneH   = roadH / LANES;
+  laneY.length = 0;
+  for (let i = 0; i < LANES; i++) laneY[i] = roadTop + (i + 0.5) * laneH;
+  carX = W * CAR_X_FRAC;
+}
+
+// ─── RESIZE ──────────────────────────────────────────────────────────────────
+function resize() {
+  W = canvas.width  = window.innerWidth;
+  H = canvas.height = window.innerHeight;
+  computeLanes();
+  car.y = laneY[car.lane];
+}
+window.addEventListener('resize', resize);
+
+// ─── ROAD DRAWING ────────────────────────────────────────────────────────────
+let roadX = 0;                  // scroll offset for lane dashes (px)
+
+function drawRoad() {
+  // Grass strips
+  ctx.fillStyle = '#2E6B1A';
+  ctx.fillRect(0, 0, W, roadTop);
+  ctx.fillRect(0, H - GRASS, W, GRASS);
+  // Bright grass edge lines against the road
+  ctx.fillStyle = '#52A82E';
+  ctx.fillRect(0, roadTop - 4, W, 4);
+  ctx.fillRect(0, H - GRASS, W, 4);
+
+  // Asphalt
+  ctx.fillStyle = '#3a3a42';
+  ctx.fillRect(0, roadTop, W, roadH);
+
+  // Solid road shoulder lines (just inside grass)
+  ctx.fillStyle = '#e8e8e8';
+  ctx.fillRect(0, roadTop + 3, W, 3);
+  ctx.fillRect(0, H - GRASS - 6, W, 3);
+
+  // Dashed lane dividers between lanes, scrolling left
+  const DASH = 42, GAP = 34, TH = 6;
+  ctx.fillStyle = '#f4d03f';
+  for (let i = 1; i < LANES; i++) {
+    const y = roadTop + i * laneH - TH / 2;
+    for (let x = -((roadX) % (DASH + GAP)) - DASH; x < W; x += DASH + GAP) {
+      ctx.fillRect(x, y, DASH, TH);
+    }
+  }
+}
+
+// ─── CAR ─────────────────────────────────────────────────────────────────────
+const car = { lane: 1, y: 0 };
+
+function drawCar(x, y) {
+  ctx.save();
+  ctx.translate(Math.round(x), Math.round(y));
+
+  const BW = 78, BH = 34;   // body width/height
+
+  // Shadow
+  ctx.fillStyle = 'rgba(0,0,0,0.28)';
+  ctx.beginPath();
+  ctx.ellipse(2, BH / 2 + 12, BW / 2, 8, 0, 0, Math.PI * 2);
+  ctx.fill();
+
+  // Wheels (black with grey hubcaps)
+  ctx.fillStyle = '#111';
+  for (const wx of [-24, 24]) {
+    ctx.beginPath();
+    ctx.roundRect(wx - 12, BH / 2 - 4, 24, 16, 5);
+    ctx.fill();
+  }
+  ctx.fillStyle = '#888';
+  for (const wx of [-24, 24]) {
+    ctx.beginPath();
+    ctx.arc(wx, BH / 2 + 4, 4, 0, Math.PI * 2);
+    ctx.fill();
+  }
+
+  // Body (rounded red block, facing right)
+  ctx.fillStyle = '#E5241A';
+  roundRect(-BW / 2, -BH / 2, BW, BH, 12);
+  ctx.fill();
+
+  // Cabin / roof (raised, toward the back-left)
+  ctx.fillStyle = '#C41810';
+  roundRect(-BW / 2 + 8, -BH / 2 - 16, 44, 22, 8);
+  ctx.fill();
+
+  // Windshield + side window (light blue glass)
+  ctx.fillStyle = '#AEE3F5';
+  roundRect(-BW / 2 + 13, -BH / 2 - 11, 15, 14, 4); ctx.fill();
+  roundRect(-BW / 2 + 32, -BH / 2 - 11, 16, 14, 4); ctx.fill();
+
+  // Body highlight strip
+  ctx.fillStyle = '#FF6A5E';
+  roundRect(-BW / 2 + 6, -BH / 2 + 5, BW - 12, 6, 3);
+  ctx.fill();
+
+  // Headlight (front, right side)
+  ctx.fillStyle = '#FFF3B0';
+  ctx.beginPath();
+  ctx.ellipse(BW / 2 - 5, 2, 4, 6, 0, 0, Math.PI * 2);
+  ctx.fill();
+
+  // Front bumper
+  ctx.fillStyle = '#9a9aa2';
+  roundRect(BW / 2 - 4, -BH / 2 + 8, 6, BH - 16, 3);
+  ctx.fill();
+
+  ctx.restore();
+}
+
+// Rounded-rect path helper (older canvas fallback for roundRect)
+function roundRect(x, y, w, h, r) {
+  ctx.beginPath();
+  if (ctx.roundRect) { ctx.roundRect(x, y, w, h, r); return; }
+  ctx.moveTo(x + r, y);
+  ctx.arcTo(x + w, y,     x + w, y + h, r);
+  ctx.arcTo(x + w, y + h, x,     y + h, r);
+  ctx.arcTo(x,     y + h, x,     y,     r);
+  ctx.arcTo(x,     y,     x + w, y,     r);
+  ctx.closePath();
+}
+
+// ─── APPLES ──────────────────────────────────────────────────────────────────
+let apples = [];
+let score  = 0;
+
+const SPAWN_MS   = 1100;
+let   lastSpawn  = -99999;
+const APPLE_R    = 18;
+
+function makeApple() {
+  return {
+    x: W + APPLE_R + 10,
+    lane: Math.floor(Math.random() * LANES),
+    bob: Math.random() * Math.PI * 2,
+  };
+}
+
+function updateApples(now) {
+  if (now - lastSpawn > SPAWN_MS) {
+    apples.push(makeApple());
+    lastSpawn = now;
+  }
+  for (let i = apples.length - 1; i >= 0; i--) {
+    const a = apples[i];
+    a.x -= APPLE_SPEED;
+    a.bob += 0.12;
+    if (a.x < -APPLE_R - 10) apples.splice(i, 1);
+  }
+}
+
+function drawApple(a) {
+  const x = a.x;
+  const y = laneY[a.lane] + Math.sin(a.bob) * 3;
+  ctx.save();
+  ctx.translate(Math.round(x), Math.round(y));
+
+  // Shadow
+  ctx.fillStyle = 'rgba(0,0,0,0.20)';
+  ctx.beginPath();
+  ctx.ellipse(0, APPLE_R + 8, APPLE_R - 2, 5, 0, 0, Math.PI * 2);
+  ctx.fill();
+
+  // Apple body (two lobes for a classic apple silhouette)
+  ctx.fillStyle = '#E01E1E';
+  ctx.beginPath();
+  ctx.arc(-6, 1, APPLE_R - 3, 0, Math.PI * 2);
+  ctx.arc( 6, 1, APPLE_R - 3, 0, Math.PI * 2);
+  ctx.fill();
+  ctx.beginPath();
+  ctx.ellipse(0, 4, APPLE_R, APPLE_R - 1, 0, 0, Math.PI * 2);
+  ctx.fill();
+
+  // Shine
+  ctx.fillStyle = 'rgba(255,255,255,0.55)';
+  ctx.beginPath();
+  ctx.ellipse(-6, -6, 4, 6, -0.5, 0, Math.PI * 2);
+  ctx.fill();
+
+  // Stem
+  ctx.strokeStyle = '#7A4A1E';
+  ctx.lineWidth = 3;
+  ctx.lineCap = 'round';
+  ctx.beginPath();
+  ctx.moveTo(0, -APPLE_R + 4);
+  ctx.quadraticCurveTo(3, -APPLE_R - 3, 1, -APPLE_R - 6);
+  ctx.stroke();
+
+  // Leaf
+  ctx.fillStyle = '#3E8A22';
+  ctx.beginPath();
+  ctx.ellipse(8, -APPLE_R - 1, 7, 4, -0.6, 0, Math.PI * 2);
+  ctx.fill();
+
+  ctx.restore();
+}
+
+function drawApples() {
+  for (const a of apples) drawApple(a);
+}
+
+// ─── COLLISION ───────────────────────────────────────────────────────────────
+const CATCH_DX = 44;   // horizontal reach of the car's catch zone
+
+function checkCollisions() {
+  for (let i = apples.length - 1; i >= 0; i--) {
+    const a = apples[i];
+    if (a.lane === car.lane && Math.abs(a.x - carX) < CATCH_DX) {
+      const ay = laneY[a.lane];
+      apples.splice(i, 1);
+      score++;
+      scoreEl.textContent = score;
+      burst(carX + 20, ay);
+      popText(carX + 20, ay - 24);
+      playCatch();
+    }
+  }
+}
+
+// ─── PARTICLES ───────────────────────────────────────────────────────────────
+let particles = [];
+const BURST_COLORS = ['#FFD700','#FF69B4','#00FFFF','#FF4500','#ADFF2F','#FF8C00','#FFFFFF'];
+
+function burst(x, y) {
+  for (let i = 0; i < 12; i++) {
+    const angle = (i / 12) * Math.PI * 2 + Math.random() * 0.5;
+    const spd   = 2.5 + Math.random() * 4.5;
+    particles.push({
+      x, y,
+      vx: Math.cos(angle) * spd,
+      vy: Math.sin(angle) * spd - 1,
+      life: 1,
+      decay: 0.022 + Math.random() * 0.018,
+      color: BURST_COLORS[Math.floor(Math.random() * BURST_COLORS.length)],
+      sz: 4 + (Math.floor(Math.random() * 3)) * 2,
+    });
+  }
+}
+
+function updateParticles() {
+  for (let i = particles.length - 1; i >= 0; i--) {
+    const p = particles[i];
+    p.x  += p.vx;
+    p.y  += p.vy;
+    p.vy += 0.18; // gravity
+    p.life -= p.decay;
+    if (p.life <= 0) particles.splice(i, 1);
+  }
+}
+
+function drawParticles() {
+  for (const p of particles) {
+    ctx.globalAlpha = Math.max(0, p.life);
+    ctx.fillStyle = p.color;
+    ctx.fillRect(Math.round(p.x), Math.round(p.y), p.sz, p.sz);
+  }
+  ctx.globalAlpha = 1;
+}
+
+// ─── POP TEXT ────────────────────────────────────────────────────────────────
+const YUMS = ['YUM!', 'GOT IT!', 'NICE!', 'CRUNCH!', 'TASTY!'];
+let pops = [];
+
+function popText(x, y) {
+  pops.push({
+    x, y,
+    text: YUMS[Math.floor(Math.random() * YUMS.length)],
+    life: 1,
+  });
+}
+
+function updatePops() {
+  for (let i = pops.length - 1; i >= 0; i--) {
+    pops[i].y    -= 1.8;
+    pops[i].life -= 0.022;
+    if (pops[i].life <= 0) pops.splice(i, 1);
+  }
+}
+
+function drawPops() {
+  ctx.save();
+  ctx.textAlign = 'center';
+  ctx.font = `bold 13px "Press Start 2P", monospace`;
+  for (const p of pops) {
+    const a = Math.max(0, p.life);
+    ctx.globalAlpha = a;
+    ctx.strokeStyle = '#000';
+    ctx.lineWidth   = 4;
+    ctx.strokeText(p.text, p.x, p.y);
+    ctx.fillStyle   = '#FFD700';
+    ctx.fillText(p.text, p.x, p.y);
+  }
+  ctx.globalAlpha = 1;
+  ctx.restore();
+}
+
+// ─── INPUT ───────────────────────────────────────────────────────────────────
+function moveLane(delta) {
+  car.lane = Math.max(0, Math.min(LANES - 1, car.lane + delta));
+}
+
+document.addEventListener('keydown', e => {
+  if (e.key === 'ArrowUp'   || e.key === 'w' || e.key === 'W') { moveLane(-1); e.preventDefault(); }
+  if (e.key === 'ArrowDown' || e.key === 's' || e.key === 'S') { moveLane( 1); e.preventDefault(); }
+});
+
+// Touch / click: tap upper third → up a lane, lower third → down a lane,
+// middle third → jump to that lane. Ignore taps on the HUD buttons/panel.
+function handleTap(clientY, target) {
+  if (target.closest('.hud-btn') || target.closest('#settings-panel')) return;
+  if (clientY < H / 3)      moveLane(-1);
+  else if (clientY > H * 2 / 3) moveLane( 1);
+  else                      car.lane = 1;
+}
+
+canvas.addEventListener('click', e => handleTap(e.clientY, e.target));
+canvas.addEventListener('touchstart', e => {
+  e.preventDefault();
+  handleTap(e.touches[0].clientY, e.target);
+}, { passive: false });
+
+// ─── GAME LOOP ───────────────────────────────────────────────────────────────
+function loop(now) {
+  // Scroll the road to sell motion
+  roadX += APPLE_SPEED;
+
+  // Road background
+  drawRoad();
+
+  // Apples
+  updateApples(now);
+  drawApples();
+
+  // Car snaps toward its lane
+  car.y += (laneY[car.lane] - car.y) * 0.28;
+
+  // Catches
+  checkCollisions();
+
+  // FX
+  updateParticles();
+  drawParticles();
+
+  // Car on top
+  drawCar(carX, car.y);
+
+  // Pop text
+  updatePops();
+  drawPops();
+
+  requestAnimationFrame(loop);
+}
+
+// ─── INIT ────────────────────────────────────────────────────────────────────
+resize();
+car.y = laneY[car.lane];
+requestAnimationFrame(loop);
+</script>
+</body>
+</html>
