@@ -174,8 +174,10 @@ let   roadTop   = 0;
 let   roadH     = 0;
 let   laneH     = 0;
 const laneY     = [];           // center Y of each lane
-const CAR_X_FRAC = 0.18;        // car horizontal position (fraction of W)
-let   carX      = 0;
+const CAR_X_FRAC  = 0.18;       // car starting horizontal position (fraction of W)
+const CAR_STEP_FRAC = 0.12;     // how far one forward/back press moves the car
+function carMinX() { return W * 0.08; }   // left / back limit
+function carMaxX() { return W * 0.90; }   // right / forward limit
 
 function computeLanes() {
   roadTop = GRASS;
@@ -183,7 +185,6 @@ function computeLanes() {
   laneH   = roadH / LANES;
   laneY.length = 0;
   for (let i = 0; i < LANES; i++) laneY[i] = roadTop + (i + 0.5) * laneH;
-  carX = W * CAR_X_FRAC;
 }
 
 // ─── RESIZE ──────────────────────────────────────────────────────────────────
@@ -192,6 +193,10 @@ function resize() {
   H = canvas.height = window.innerHeight;
   computeLanes();
   car.y = laneY[car.lane];
+  // Initialise horizontal position once, then keep it within the road on resize.
+  if (car.x === 0 && car.targetX === 0) { car.x = car.targetX = W * CAR_X_FRAC; }
+  car.targetX = Math.min(carMaxX(), Math.max(carMinX(), car.targetX));
+  car.x       = Math.min(carMaxX(), Math.max(carMinX(), car.x));
 }
 window.addEventListener('resize', resize);
 
@@ -229,7 +234,7 @@ function drawRoad() {
 }
 
 // ─── CAR ─────────────────────────────────────────────────────────────────────
-const car = { lane: 1, y: 0 };
+const car = { lane: 1, y: 0, x: 0, targetX: 0 };
 
 function drawCar(x, y) {
   ctx.save();
@@ -399,13 +404,13 @@ const CATCH_DX = 44;   // horizontal reach of the car's catch zone
 function checkCollisions() {
   for (let i = apples.length - 1; i >= 0; i--) {
     const a = apples[i];
-    if (a.lane === car.lane && Math.abs(a.x - carX) < CATCH_DX) {
+    if (a.lane === car.lane && Math.abs(a.x - car.x) < CATCH_DX) {
       const ay = laneY[a.lane];
       apples.splice(i, 1);
       score++;
       scoreEl.textContent = score;
-      burst(carX + 20, ay);
-      popText(carX + 20, ay - 24);
+      burst(car.x + 20, ay);
+      popText(car.x + 20, ay - 24);
       playCatch();
     }
   }
@@ -493,24 +498,34 @@ function moveLane(delta) {
   car.lane = Math.max(0, Math.min(LANES - 1, car.lane + delta));
 }
 
-document.addEventListener('keydown', e => {
-  if (e.key === 'ArrowUp'   || e.key === 'w' || e.key === 'W') { moveLane(-1); e.preventDefault(); }
-  if (e.key === 'ArrowDown' || e.key === 's' || e.key === 'S') { moveLane( 1); e.preventDefault(); }
-});
-
-// Touch / click: tap upper third → up a lane, lower third → down a lane,
-// middle third → jump to that lane. Ignore taps on the HUD buttons/panel.
-function handleTap(clientY, target) {
-  if (target.closest('.hud-btn') || target.closest('#settings-panel')) return;
-  if (clientY < H / 3)      moveLane(-1);
-  else if (clientY > H * 2 / 3) moveLane( 1);
-  else                      car.lane = 1;
+// Move the car forward (+1, right) or back (-1, left) along the road.
+function driveX(dir) {
+  const step = W * CAR_STEP_FRAC;
+  car.targetX = Math.min(carMaxX(), Math.max(carMinX(), car.targetX + dir * step));
 }
 
-canvas.addEventListener('click', e => handleTap(e.clientY, e.target));
+document.addEventListener('keydown', e => {
+  if (e.key === 'ArrowUp'    || e.key === 'w' || e.key === 'W') { moveLane(-1); e.preventDefault(); }
+  if (e.key === 'ArrowDown'  || e.key === 's' || e.key === 'S') { moveLane( 1); e.preventDefault(); }
+  if (e.key === 'ArrowRight' || e.key === 'd' || e.key === 'D') { driveX( 1);   e.preventDefault(); }
+  if (e.key === 'ArrowLeft'  || e.key === 'a' || e.key === 'A') { driveX(-1);   e.preventDefault(); }
+});
+
+// Touch / click: drive the car to the tapped spot — the lane comes from the
+// vertical position, forward/back from the horizontal position. Ignore taps on
+// the HUD buttons/panel.
+function handleTap(clientX, clientY, target) {
+  if (target.closest('.hud-btn') || target.closest('#settings-panel')) return;
+  const lane = Math.floor((clientY - roadTop) / laneH);
+  car.lane = Math.max(0, Math.min(LANES - 1, lane));
+  car.targetX = Math.min(carMaxX(), Math.max(carMinX(), clientX));
+}
+
+canvas.addEventListener('click', e => handleTap(e.clientX, e.clientY, e.target));
 canvas.addEventListener('touchstart', e => {
   e.preventDefault();
-  handleTap(e.touches[0].clientY, e.target);
+  const t = e.touches[0];
+  handleTap(t.clientX, t.clientY, e.target);
 }, { passive: false });
 
 // ─── GAME LOOP ───────────────────────────────────────────────────────────────
@@ -525,8 +540,9 @@ function loop(now) {
   updateApples(now);
   drawApples();
 
-  // Car snaps toward its lane
+  // Car eases toward its lane (vertical) and its forward/back target (horizontal)
   car.y += (laneY[car.lane] - car.y) * 0.28;
+  car.x += (car.targetX - car.x) * 0.28;
 
   // Catches
   checkCollisions();
@@ -536,7 +552,7 @@ function loop(now) {
   drawParticles();
 
   // Car on top
-  drawCar(carX, car.y);
+  drawCar(car.x, car.y);
 
   // Pop text
   updatePops();
