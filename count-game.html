@@ -61,7 +61,7 @@
   #settings-panel .row { display: flex; align-items: center; gap: 12px; }
   #max-slider { flex: 1; height: 4px; accent-color: #FFD700; cursor: pointer; }
   #max-val {
-    font-size: 16px; color: #FFD700; min-width: 20px;
+    font-size: 16px; color: #FFD700; min-width: 34px;
     text-align: right; text-shadow: 0 0 8px rgba(255,215,0,0.5);
   }
 
@@ -109,7 +109,7 @@
     padding: 2vmin 4vw;
   }
   .obj {
-    font-size: 11vmin;
+    font-size: var(--obj-size, 11vmin);
     line-height: 1;
     animation: popIn 0.35s ease-out backwards;
   }
@@ -152,6 +152,24 @@
     -webkit-tap-highlight-color: transparent;
   }
   .digit-btn:active { transform: scale(0.9); border-color: #FFD700; }
+  .digit-btn.action { color: #FF69B4; }
+  .digit-btn.ok { color: #ADFF2F; border-color: rgba(173,255,47,0.5); }
+
+  #answer-box {
+    min-width: 132px;
+    min-height: 56px;
+    margin: 1vmin auto 0;
+    padding: 6px 24px;
+    display: flex; align-items: center; justify-content: center;
+    background: rgba(255,255,255,0.06);
+    border: 3px solid rgba(255,255,255,0.25);
+    border-radius: 14px;
+  }
+  #answer-display {
+    font-size: 32px; color: #FFD700; letter-spacing: 4px;
+    text-shadow: 0 0 10px rgba(255,215,0,0.5);
+  }
+  #answer-display.empty { color: rgba(255,255,255,0.28); text-shadow: none; }
 
   .confetti-piece {
     position: fixed;
@@ -176,7 +194,7 @@
 <div id="settings-panel">
   <div class="section-label">Biggest Number</div>
   <div class="row">
-    <input id="max-slider" type="range" min="3" max="9" value="5">
+    <input id="max-slider" type="range" min="3" max="100" value="5">
     <span id="max-val">5</span>
   </div>
 </div>
@@ -186,6 +204,7 @@
 <div id="game-area">
   <div id="question">How many <span id="obj-name">ducks</span>?</div>
   <div id="object-field"></div>
+  <div id="answer-box"><span id="answer-display" class="empty">?</span></div>
   <div id="digit-pad">
     <button class="digit-btn" data-n="1">1</button>
     <button class="digit-btn" data-n="2">2</button>
@@ -196,6 +215,9 @@
     <button class="digit-btn" data-n="7">7</button>
     <button class="digit-btn" data-n="8">8</button>
     <button class="digit-btn" data-n="9">9</button>
+    <button class="digit-btn action" data-act="back" aria-label="Delete">⌫</button>
+    <button class="digit-btn" data-n="0">0</button>
+    <button class="digit-btn action ok" data-act="ok" aria-label="Check">✓</button>
   </div>
 </div>
 
@@ -376,8 +398,11 @@ const SETS = [
   { e: '🎈', w: 'balloons' }
 ];
 const NOTES = [261, 294, 330, 349, 392, 440, 494, 523, 587];
-const NUMBER_WORDS = ['One','Two','Three','Four','Five','Six','Seven','Eight','Nine'];
+const NUMBER_WORDS = ['One','Two','Three','Four','Five','Six','Seven','Eight','Nine','Ten'];
 const WEIGHTS = {1:3, 2:3, 3:3, 4:2, 5:2, 6:1, 7:1, 8:1, 9:1};
+// Above this count there are too many objects to count one-by-one out loud,
+// so we celebrate/hint without the slow hop-and-count-aloud animation.
+const COUNT_MAX = 10;
 
 let started      = false;
 let currentSet    = null;
@@ -389,14 +414,28 @@ let score         = 0;
 
 function weightedPool(max) {
   const arr = [];
-  for (let n = 1; n <= 9; n++) {
-    if (n > max) continue;
-    for (let i = 0; i < WEIGHTS[n]; i++) arr.push(n);
+  for (let n = 1; n <= max; n++) {
+    const w = WEIGHTS[n] || 1;   // small numbers favoured; 10+ each appear once
+    for (let i = 0; i < w; i++) arr.push(n);
   }
   return arr;
 }
 
+// Shrink the emoji (and tighten spacing) as the count grows so big
+// numbers still fit on screen.
+function applyObjSize(total) {
+  let v = 11, gap = 4;
+  if      (total > 40) { v = 3;   gap = 1.2; }
+  else if (total > 20) { v = 4.2; gap = 1.8; }
+  else if (total > 12) { v = 6;   gap = 2.6; }
+  else if (total > 6)  { v = 8;   gap = 3.2; }
+  const field = document.getElementById('object-field');
+  field.style.setProperty('--obj-size', v + 'vmin');
+  field.style.gap = gap + 'vmin';
+}
+
 function renderObjects() {
+  applyObjSize(targetN);
   const field = document.getElementById('object-field');
   field.innerHTML = '';
   for (let i = 0; i < targetN; i++) {
@@ -419,6 +458,14 @@ function hopCount(onDone, withVoice) {
   setTimeout(onDone, objs.length * 650 + 300);
 }
 
+// A brief all-at-once wave for large counts that are impractical to count aloud.
+function pulseAll() {
+  const objs = document.querySelectorAll('#object-field .obj');
+  objs.forEach((el, i) => {
+    setTimeout(() => { el.style.animation = 'hop 0.5s ease-in-out'; }, Math.min(i * 14, 450));
+  });
+}
+
 function nextRound() {
   inputLocked = true;
   const pool = weightedPool(maxNumber);
@@ -430,13 +477,15 @@ function nextRound() {
   currentSet = SETS[Math.floor(Math.random() * SETS.length)];
   document.getElementById('obj-name').textContent = currentSet.w;
   renderObjects();
+  entry = '';
+  renderEntry();
   speak(`How many ${currentSet.w}?`);
   setTimeout(() => { inputLocked = false; }, 400);
 }
 
 function correct() {
   inputLocked = true;
-  hopCount(() => {
+  const finish = () => {
     playArpeggio();
     spawnConfetti(15);
     score++;
@@ -444,14 +493,23 @@ function correct() {
     if (score % 5 === 0) setTimeout(() => { spawnConfetti(80); playCelebration(); }, 150);
     speak(randomPraise());
     setTimeout(nextRound, 1600);
-  }, true);
+  };
+  if (targetN <= COUNT_MAX) {
+    hopCount(finish, true);
+  } else {
+    pulseAll();
+    setTimeout(finish, 700);
+  }
 }
 
 function wrong(n) {
   inputLocked = true;
   wrongCount++;
   playTone(196, 0.3, 'sine', 0.18);
-  if (wrongCount === 1) {
+  if (targetN > COUNT_MAX) {
+    speak('Try counting again!');
+    setTimeout(() => { inputLocked = false; }, 500);
+  } else if (wrongCount === 1) {
     speak('Try counting again!');
     hopCount(() => { inputLocked = false; }, false);
   } else {
@@ -465,23 +523,52 @@ function wrong(n) {
   }
 }
 
-function handleInput(n) {
+// ── Answer entry (supports multi-digit answers up to 100) ──────────────────
+let entry = '';
+const answerEl = document.getElementById('answer-display');
+
+function renderEntry() {
+  if (entry === '') { answerEl.textContent = '?'; answerEl.classList.add('empty'); }
+  else { answerEl.textContent = entry; answerEl.classList.remove('empty'); }
+}
+
+function pushDigit(d) {
   if (inputLocked) return;
-  if (!Number.isInteger(n) || n < 1 || n > 9) return;
+  if (entry.length >= 3) return;
+  if (entry === '' && d === '0') return;   // no leading zero
+  entry += d;
+  renderEntry();
+  if (entry.length >= 3) submitAnswer();    // 3 digits can only be 100 — check it
+}
+
+function backspace() {
+  if (inputLocked) return;
+  entry = entry.slice(0, -1);
+  renderEntry();
+}
+
+function submitAnswer() {
+  if (inputLocked || entry === '') return;
+  const n = parseInt(entry, 10);
+  entry = '';
+  renderEntry();
   if (n === targetN) correct();
   else wrong(n);
 }
 
-document.querySelectorAll('.digit-btn').forEach(b => {
-  b.addEventListener('pointerdown', () => handleInput(parseInt(b.dataset.n, 10)));
+document.querySelectorAll('.digit-btn').forEach(btn => {
+  btn.addEventListener('pointerdown', () => {
+    if      (btn.dataset.act === 'back') backspace();
+    else if (btn.dataset.act === 'ok')   submitAnswer();
+    else                                 pushDigit(btn.dataset.n);
+  });
 });
 
 document.addEventListener('keydown', e => {
   if (e.repeat || e.metaKey || e.ctrlKey || e.altKey) return;
-  if (e.key.length !== 1) return;
-  const n = parseInt(e.key, 10);
-  if (Number.isNaN(n)) return;
-  handleInput(n);
+  if (e.key === 'Enter')      { submitAnswer(); return; }
+  if (e.key === 'Backspace')  { backspace(); e.preventDefault(); return; }
+  if (e.key.length === 1 && e.key >= '0' && e.key <= '9') pushDigit(e.key);
 });
 
 // ── Start ────────────────────────────────────────────────────────────────
