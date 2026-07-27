@@ -1,10 +1,17 @@
-name: Deploy site to Coolify
+name: Deploy tts-proxy to Coolify
+
+# The tts-proxy is a separate Coolify app from the static site, so it needs its
+# own deploy trigger. This runs only when the proxy's code changes (or when run
+# manually), and requires two repository secrets:
+#   COOLIFY_TTS_UUID  – the tts-proxy application's Coolify UUID
+#   COOLIFY_TOKEN     – the Coolify API token (shared with the site workflow)
 
 on:
   push:
     branches: [master]
-    paths-ignore:
-      - 'tts-proxy/**'   # the tts-proxy has its own workflow (deploy-tts.yml)
+    paths:
+      - 'tts-proxy/**'
+      - '.github/workflows/deploy-tts.yml'
   workflow_dispatch:
 
 jobs:
@@ -13,15 +20,24 @@ jobs:
     steps:
       - name: Trigger deployment
         id: trigger
+        env:
+          TTS_UUID: ${{ secrets.COOLIFY_TTS_UUID }}
+          TOKEN: ${{ secrets.COOLIFY_TOKEN }}
         run: |
+          if [ -z "$TTS_UUID" ]; then
+            echo "::error::COOLIFY_TTS_UUID secret is not set. Add the tts-proxy app's Coolify UUID as a repository secret to enable this workflow."
+            exit 1
+          fi
           RESPONSE=$(curl -fsSL -X GET \
-            "https://coolify.chuve.co/api/v1/deploy?uuid=${{ secrets.COOLIFY_APP_UUID }}&force=false" \
-            -H "Authorization: Bearer ${{ secrets.COOLIFY_TOKEN }}")
+            "https://coolify.chuve.co/api/v1/deploy?uuid=$TTS_UUID&force=false" \
+            -H "Authorization: Bearer $TOKEN")
           echo "$RESPONSE"
           DEPLOY_UUID=$(echo "$RESPONSE" | jq -r '.deployments[0].deployment_uuid')
           echo "deploy_uuid=$DEPLOY_UUID" >> "$GITHUB_OUTPUT"
 
       - name: Wait for deployment to finish
+        env:
+          TOKEN: ${{ secrets.COOLIFY_TOKEN }}
         run: |
           UUID="${{ steps.trigger.outputs.deploy_uuid }}"
           TIMEOUT=300   # 5 minutes max
@@ -30,7 +46,7 @@ jobs:
           while [ $ELAPSED -lt $TIMEOUT ]; do
             STATUS=$(curl -fsSL \
               "https://coolify.chuve.co/api/v1/deployments/$UUID" \
-              -H "Authorization: Bearer ${{ secrets.COOLIFY_TOKEN }}" \
+              -H "Authorization: Bearer $TOKEN" \
               | jq -r '.status')
             echo "  status: $STATUS"
             case "$STATUS" in
