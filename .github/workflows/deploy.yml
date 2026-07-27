@@ -39,3 +39,42 @@ jobs:
             ELAPSED=$((ELAPSED + 5))
           done
           echo "Timed out waiting for deployment."; exit 1
+
+      # The tts-proxy is a separate Coolify app. Deploy it too so server.js
+      # changes (e.g. the multilingual model for Russian audio) go live.
+      # Requires the COOLIFY_TTS_UUID secret (the tts-proxy app's Coolify UUID);
+      # if it is absent the step is skipped so the site deploy is unaffected.
+      - name: Deploy tts-proxy
+        env:
+          TTS_UUID: ${{ secrets.COOLIFY_TTS_UUID }}
+          TOKEN: ${{ secrets.COOLIFY_TOKEN }}
+        run: |
+          if [ -z "$TTS_UUID" ]; then
+            echo "COOLIFY_TTS_UUID not set — skipping tts-proxy deploy."
+            echo "Add the tts-proxy app's Coolify UUID as the COOLIFY_TTS_UUID"
+            echo "repository secret to enable automatic proxy deploys."
+            exit 0
+          fi
+          RESPONSE=$(curl -fsSL -X GET \
+            "https://coolify.chuve.co/api/v1/deploy?uuid=$TTS_UUID&force=false" \
+            -H "Authorization: Bearer $TOKEN")
+          echo "$RESPONSE"
+          UUID=$(echo "$RESPONSE" | jq -r '.deployments[0].deployment_uuid')
+          TIMEOUT=300
+          ELAPSED=0
+          echo "Polling tts-proxy deployment $UUID ..."
+          while [ $ELAPSED -lt $TIMEOUT ]; do
+            STATUS=$(curl -fsSL \
+              "https://coolify.chuve.co/api/v1/deployments/$UUID" \
+              -H "Authorization: Bearer $TOKEN" \
+              | jq -r '.status')
+            echo "  status: $STATUS"
+            case "$STATUS" in
+              finished)  echo "tts-proxy deployment succeeded."; exit 0 ;;
+              failed)    echo "tts-proxy deployment failed!";    exit 1 ;;
+              cancelled) echo "tts-proxy deployment cancelled."; exit 1 ;;
+            esac
+            sleep 5
+            ELAPSED=$((ELAPSED + 5))
+          done
+          echo "Timed out waiting for tts-proxy deployment."; exit 1
