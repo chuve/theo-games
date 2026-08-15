@@ -435,8 +435,10 @@ function drawPlate(cx, cy, rim) {
   ctx.fillRect(cx - R * S * 0.45, cy - R * S * 0.5, S, S);
 }
 
+const MAX_PLATES = 3;
+
 function updatePlates(now) {
-  if (now - lastSpawn > spawnMs()) {
+  if (plates.length < MAX_PLATES && now - lastSpawn > spawnMs()) {
     plates.push(makePlate());
     lastSpawn = now;
   }
