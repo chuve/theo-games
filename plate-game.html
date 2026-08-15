@@ -436,9 +436,11 @@ function drawPlate(cx, cy, rim) {
 }
 
 const MAX_PLATES = 3;
+const MIN_GAP_Y   = 260; // minimum vertical space (px) below the newest plate before another can spawn
 
 function updatePlates(now) {
-  if (plates.length < MAX_PLATES && now - lastSpawn > spawnMs()) {
+  const newestY = plates.length ? plates[plates.length - 1].y : Infinity;
+  if (plates.length < MAX_PLATES && now - lastSpawn > spawnMs() && newestY > -30 + MIN_GAP_Y) {
     plates.push(makePlate());
     lastSpawn = now;
   }
