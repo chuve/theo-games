@@ -32,7 +32,8 @@
     text-decoration: none; display: inline-flex; align-items: center;
   }
   #home-btn { right: 12px; }
-  #mode-btn { left: 12px; }
+  #lang-btn { left: 12px; }
+  #mode-btn { left: 12px; top: 52px; }
 
   #hud {
     position: fixed;
@@ -99,12 +100,16 @@
     gap: 1vmin;
     z-index: 15;
     padding: 1.5vmin;
+    width: max-content;
+    max-width: 96vw;
     background: rgba(8,8,36,0.85);
     border: 2px solid rgba(255,255,255,0.15);
     border-radius: 14px;
   }
   #mini-kb.show { display: flex; }
-  .kb-row { display: flex; gap: 0.8vmin; justify-content: center; }
+  .kb-row { display: flex; gap: 0.8vmin; justify-content: center; flex-wrap: wrap; }
+  /* Russian rows are longer (up to 12 keys) — let the keys shrink to fit. */
+  #mini-kb.ru .kb-key { min-width: 38px; font-size: 12px; padding: 0 3px; }
   .kb-key {
     min-width: 52px; min-height: 52px;
     padding: 0 6px;
@@ -149,6 +154,7 @@
 
 <canvas id="stars-bg"></canvas>
 <a id="home-btn" class="nav-btn" href="index.html">🏠</a>
+<button id="lang-btn" class="nav-btn" onclick="toggleLang()">🌐 EN</button>
 <button id="mode-btn" class="nav-btn" onclick="toggleMode()">🔤 ABC</button>
 
 <div id="hud">⭐ <span id="score">0</span></div>
@@ -258,13 +264,19 @@ async function idbSet(key, val) {
   new Promise(res => { const tx = db.transaction('audio','readwrite'); tx.objectStore('audio').put(val, key); tx.oncomplete = res; });
 }
 
-function speakFallback(text) {
+function speakFallback(text, langCode) {
+  langCode = langCode || 'en-US';
   window.speechSynthesis.cancel();
   const u = new SpeechSynthesisUtterance(text);
-  u.lang = 'en-US'; u.rate = 0.88; u.pitch = 1.1; u.volume = 1;
+  u.lang = langCode; u.rate = 0.88; u.pitch = 1.1; u.volume = 1;
   const vv = window.speechSynthesis.getVoices();
-  const pick = vv.find(v => v.lang.startsWith('en') && /samantha|karen|moira|zoe|victoria|female/i.test(v.name))
-            || vv.find(v => v.lang.startsWith('en'));
+  let pick;
+  if (langCode.startsWith('ru')) {
+    pick = vv.find(v => v.lang && v.lang.startsWith('ru'));
+  } else {
+    pick = vv.find(v => v.lang.startsWith('en') && /samantha|karen|moira|zoe|victoria|female/i.test(v.name))
+        || vv.find(v => v.lang.startsWith('en'));
+  }
   if (pick) u.voice = pick;
   window.speechSynthesis.speak(u);
 }
@@ -276,7 +288,8 @@ function playAudioBuf(buf) {
 }
 
 let currentSrc = null;
-async function speak(text) {
+async function speak(text, ttsLang) {
+  const langCode = ttsLang || (lang === 'ru' ? 'ru-RU' : 'en-US');
   try { currentSrc && currentSrc.stop(); } catch(e) {}
   window.speechSynthesis.cancel();
   try {
@@ -287,25 +300,46 @@ async function speak(text) {
     const res = await fetch(`${TTS_PROXY}/tts`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ text })
+      body: JSON.stringify({ text, lang: langCode.slice(0, 2) })
     });
     if (!res.ok) throw new Error(res.status);
     const buf = await res.arrayBuffer();
     idbSet(text, buf.slice(0));
     currentSrc = playAudioBuf(await getAudio().decodeAudioData(buf));
   } catch(e) {
-    speakFallback(text);
+    speakFallback(text, langCode);
   }
 }
 
-// ── Praise pool (shared phrasing across games) ─────────────────────────────
-const PRAISE = ['Great job!', "You found it!", 'Amazing!', 'Woohoo!'];
-function randomPraise() { return PRAISE[Math.floor(Math.random() * PRAISE.length)]; }
+// ── Localized phrasing (English / Russian) ─────────────────────────────────
+const PHRASES = {
+  en: {
+    findLetter: t => `Find the letter ${t}!`,
+    findNumber: t => `Find the number ${t}!`,
+    isLetter:   c => `That's the letter ${c}!`,
+    isNumber:   c => `That's the number ${c}!`,
+    praise: ['Great job!', "You found it!", 'Amazing!', 'Woohoo!'],
+  },
+  ru: {
+    findLetter: t => `Найди букву ${t}!`,
+    findNumber: t => `Найди цифру ${t}!`,
+    isLetter:   c => `Это буква ${c}!`,
+    isNumber:   c => `Это цифра ${c}!`,
+    praise: ['Молодец!', 'Ты нашёл!', 'Здорово!', 'Ура!'],
+  },
+};
+function randomPraise() {
+  const arr = PHRASES[lang].praise;
+  return arr[Math.floor(Math.random() * arr.length)];
+}
 
 // ── Game state ───────────────────────────────────────────────────────────
-const LETTERS = 'ABCDEFGHIJKLMNOPQRSTUVWXYZ'.split('');
-const DIGITS  = '0123456789'.split('');
+const LETTERS_EN = 'ABCDEFGHIJKLMNOPQRSTUVWXYZ'.split('');
+const LETTERS_RU = 'АБВГДЕЁЖЗИЙКЛМНОПРСТУФХЦЧШЩЪЫЬЭЮЯ'.split('');
+const DIGITS     = '0123456789'.split('');
+function letters() { return lang === 'ru' ? LETTERS_RU : LETTERS_EN; }
 
+let lang    = localStorage.getItem('keyhunt-lang') || 'en';
 let mode    = localStorage.getItem('keyhunt-mode') || 'letters';
 let started = false;
 let target  = null;
@@ -316,19 +350,27 @@ let kbBuiltFor   = null;
 let score   = 0;
 
 const touchPermanent = window.matchMedia('(pointer: coarse)').matches;
+// The on-screen keyboard is shown permanently on touch devices, and also in
+// Russian (a physical keyboard may not have Cyrillic keys).
+function showKb() { return touchPermanent || lang === 'ru'; }
 
 function pool() {
-  if (mode === 'letters') return LETTERS;
+  const L = letters();
+  if (mode === 'letters') return L;
   if (mode === 'digits')  return DIGITS;
-  return LETTERS.concat(DIGITS);
+  return L.concat(DIGITS);
 }
 function isDigit(ch) { return /[0-9]/.test(ch); }
-function promptPhrase(t)     { return isDigit(t)  ? `Find the number ${t}!`  : `Find the letter ${t}!`; }
-function identityPhrase(ch)  { return isDigit(ch) ? `That's the number ${ch}!` : `That's the letter ${ch}!`; }
+function promptPhrase(t)    { const P = PHRASES[lang]; return isDigit(t)  ? P.findNumber(t) : P.findLetter(t); }
+function identityPhrase(ch) { const P = PHRASES[lang]; return isDigit(ch) ? P.isNumber(ch)  : P.isLetter(ch); }
 
 function updateModeBtn() {
   const btn = document.getElementById('mode-btn');
   btn.textContent = mode === 'letters' ? '🔤 ABC' : mode === 'digits' ? '🔢 123' : '🔀 A1';
+}
+
+function updateLangBtn() {
+  document.getElementById('lang-btn').textContent = lang === 'ru' ? '🌐 RU' : '🌐 EN';
 }
 
 function toggleMode() {
@@ -336,21 +378,39 @@ function toggleMode() {
   localStorage.setItem('keyhunt-mode', mode);
   updateModeBtn();
   kbBuiltFor = null;
-  if (touchPermanent) buildMiniKb();
+  if (showKb()) buildMiniKb();
   if (started) { target = null; nextRound(); }
+}
+
+function toggleLang() {
+  lang = lang === 'en' ? 'ru' : 'en';
+  localStorage.setItem('keyhunt-lang', lang);
+  document.documentElement.lang = lang;
+  updateLangBtn();
+  kbBuiltFor = null;              // rebuild for the new alphabet
+  if (started) { target = null; nextRound(); }
+  else if (showKb()) buildMiniKb();
 }
 
 function buildMiniKb() {
   const kb = document.getElementById('mini-kb');
-  if (kbBuiltFor === mode) { highlightTarget(); return; }
-  kbBuiltFor = mode;
+  const builtKey = mode + '|' + lang;
+  if (kbBuiltFor === builtKey) { highlightTarget(); return; }
+  kbBuiltFor = builtKey;
+  kb.classList.toggle('ru', lang === 'ru');
   kb.innerHTML = '';
   const rows = [];
   if (mode !== 'letters') rows.push('1234567890'.split(''));
   if (mode !== 'digits') {
-    rows.push('QWERTYUIOP'.split(''));
-    rows.push('ASDFGHJKL'.split(''));
-    rows.push('ZXCVBNM'.split(''));
+    if (lang === 'ru') {
+      rows.push('ЙЦУКЕНГШЩЗХЪ'.split(''));
+      rows.push('ФЫВАПРОЛДЖЭ'.split(''));
+      rows.push('ЯЧСМИТЬБЮЁ'.split(''));
+    } else {
+      rows.push('QWERTYUIOP'.split(''));
+      rows.push('ASDFGHJKL'.split(''));
+      rows.push('ZXCVBNM'.split(''));
+    }
   }
   rows.forEach(r => {
     const rowDiv = document.createElement('div');
@@ -383,7 +443,7 @@ function showHint() {
 }
 
 function hideHint() {
-  if (!touchPermanent) document.getElementById('mini-kb').classList.remove('show');
+  if (!showKb()) document.getElementById('mini-kb').classList.remove('show');
 }
 
 function armIdleHint() {
@@ -409,7 +469,7 @@ function nextRound() {
   target = t;
   wrongCount = 0;
   renderTarget();
-  if (touchPermanent) buildMiniKb();
+  if (showKb()) { buildMiniKb(); document.getElementById('mini-kb').classList.add('show'); }
   speak(promptPhrase(target));
   setTimeout(() => { inputLocked = false; armIdleHint(); }, 400);
 }
@@ -448,9 +508,13 @@ function wrong(ch) {
   }, 1200);
 }
 
+function isGameChar(ch) {
+  return DIGITS.includes(ch) || letters().includes(ch);
+}
+
 function handleInput(ch) {
   if (inputLocked) return;
-  if (!/^[A-Z0-9]$/.test(ch)) return;
+  if (!isGameChar(ch)) return;
   if (ch === target) correct();
   else wrong(ch);
 }
@@ -474,6 +538,8 @@ startGame();
 
 // ── Init ─────────────────────────────────────────────────────────────────
 updateModeBtn();
+updateLangBtn();
+document.documentElement.lang = lang;
 renderTarget();
 </script>
 </body>

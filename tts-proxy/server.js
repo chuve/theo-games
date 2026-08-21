@@ -18,8 +18,13 @@ app.options('/tts', (_req, res) => res.sendStatus(204));
 
 app.post('/tts', async (req, res) => {
   const text = req.body?.text?.trim();
+  const lang = (req.body?.lang || 'en').toLowerCase();
   if (!text)  return res.status(400).json({ error: 'missing text' });
   if (!KEY)   return res.status(503).json({ error: 'ELEVEN_KEY not configured' });
+
+  // English uses the fast turbo model; any other language needs the
+  // multilingual model so non-Latin text (e.g. Russian) is pronounced correctly.
+  const model_id = lang.startsWith('en') ? 'eleven_turbo_v2' : 'eleven_multilingual_v2';
 
   try {
     const upstream = await fetch(
@@ -33,7 +38,7 @@ app.post('/tts', async (req, res) => {
         },
         body: JSON.stringify({
           text,
-          model_id: 'eleven_turbo_v2',
+          model_id,
           voice_settings: { stability: 0.5, similarity_boost: 0.75 },
         }),
       }
