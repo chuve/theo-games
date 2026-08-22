@@ -45,6 +45,8 @@ var FOGD   = 5;
 var BASE   = 6900;                      // world units / second
 var BOOSTM = 1.75;
 var LANES  = [-0.62,0,0.62];
+var CARW   = 1.06;    // car art -> world units, so a projected car matches the player's own
+var RIVAL  = {c:'#3a7bd5',d:'#245a9e',num:8};
 var SLOTS  = 20, PER_SLOT = 1, TOTAL = SLOTS*PER_SLOT;   // one road star == one HUD star
 
 var INK='#2a1a18';
@@ -179,6 +181,18 @@ var A={
       o.start(st); o.stop(st+1.0); o2.start(st); o2.stop(st+1.0);
     });
   },
+  pass:function(){
+    if(!this.ac) return;
+    var ac=this.ac,t=ac.currentTime;
+    [[659.25,0],[987.77,0.085],[1318.5,0.17]].forEach(function(n){
+      var o=ac.createOscillator(); o.type='triangle'; o.frequency.value=n[0];
+      var g=ac.createGain();
+      g.gain.setValueAtTime(0.0001,t+n[1]);
+      g.gain.exponentialRampToValueAtTime(0.26,t+n[1]+0.015);
+      g.gain.exponentialRampToValueAtTime(0.0001,t+n[1]+0.36);
+      o.connect(g); g.connect(A.master); o.start(t+n[1]); o.stop(t+n[1]+0.42);
+    });
+  },
   pop:function(){
     if(!this.ac) return;
     var ac=this.ac,t=ac.currentTime;
@@ -199,7 +213,7 @@ var A={
 /* ============================================================
    HELPERS
    ============================================================ */
-function lw(w){ return Math.min(w/IS, w*6); }
+function lw(w){ return Math.min(w/IS, w*4); }
 function ink(w){ ctx.lineWidth=lw(w||7); ctx.strokeStyle=INK; ctx.lineJoin='round'; ctx.lineCap='round'; ctx.stroke(); }
 function rr(x,y,w,h,r){
   ctx.beginPath();
@@ -556,8 +570,8 @@ function placeSprites(){
     seg(finishSeg+i).sprites.push({kind:'flag',lane:-1.45,i:i});
     seg(finishSeg+i).sprites.push({kind:'flag',lane:1.45,i:i+2});
   }
-  seg(finishSeg+34).sprites.push({kind:'bunt',lane:0});
-  var friends=[[26,-0.62,'#4fb0f5','#2f7fbb',7],[44,0,'#3faa5b','#2a7a41',5],[30,0.62,'#ff8fc4','#cc5f92',9]];
+  seg(finishSeg+26).sprites.push({kind:'bunt',lane:0});
+  var friends=[[12,-0.62,'#4fb0f5','#2f7fbb',7],[16,0,'#3faa5b','#2a7a41',5],[12,0.62,'#ff8fc4','#cc5f92',9]];
   friends.forEach(function(f){
     seg(finishSeg+f[0]).sprites.push({kind:'friend',lane:f[1],col:f[2],dark:f[3],num:f[4],ph:Math.random()*6.28});
   });
@@ -597,6 +611,28 @@ function renderSegment(x1,y1,w1,x2,y2,w2,color,fog){
   }
 }
 
+function drawRival(p,clipY,fg){
+  var k=p.s*CARW;
+  if(k<0.00002||k>1.9) return;
+  var hop = state==='finish'? Math.abs(Math.sin(t*6))*300*clamp((finishT-0.4)*1.5,0,1):0;
+  ctx.save();
+  ctx.beginPath(); ctx.rect(0,0,W,Math.max(0,clipY)); ctx.clip();
+  ctx.globalAlpha=0.25+0.75*(fg===undefined?1:fg);
+  if(rvSurge&&state==='play'&&Math.random()<0.55){
+    var cw=383*p.s;
+    parts.push({x:p.x+(Math.random()-0.5)*cw, y:p.y-cw*0.05,
+      vx:(Math.random()-0.5)*50, vy:-25-Math.random()*45,
+      r:cw*0.10+Math.random()*cw*0.07, life:0.35+Math.random()*0.25, age:0,
+      col:'rgba(214,168,110,0.55)'});
+  }
+  ctx.translate(p.x,p.y-hop*p.s);
+  ctx.scale(k,k);
+  IS=k;
+  drawKart({color:RIVAL.c,dark:RIVAL.d,num:RIVAL.num,lean:clamp(rvLean,-1,1)});
+  IS=1; ctx.globalAlpha=1;
+  ctx.restore();
+}
+
 function drawSprite(s,sc,sx,clipY,tt,fg){
   var scale=sc*W/2;
   if(scale<0.00002||scale>1.6) return;
@@ -617,11 +653,11 @@ function drawSprite(s,sc,sx,clipY,tt,fg){
     case 'arch':   artArch(tt); break;
     case 'bunt':   artBunting(tt); break;
     case 'friend':
-      var hop = state==='finish'? Math.abs(Math.sin(tt*6+s.ph))*220*clamp((finishT-0.4)*1.5,0,1):0;
+      var hop = state==='finish'? Math.abs(Math.sin(tt*6+s.ph))*260*clamp((finishT-0.4)*1.5,0,1):0;
       ctx.save();
       ctx.translate(0,-hop);
-      ctx.scale(3.6,3.6);
-      IS=scale*3.6;
+      ctx.scale(CARW,CARW);
+      IS=scale*CARW;
       drawKart({color:s.col,dark:s.dark,num:s.num,
                 lean:Math.sin(tt*6+s.ph)*0.5});
       ctx.restore();
@@ -641,6 +677,8 @@ var boostAmt=0, holding=false, t=0, finishT=0, wobble=0;
 var collected=0, dingStep=0, slotFilled=0, slotPop=[], flyers=[];
 var parts=[], confetti=[];
 var ptrStar=0, ptrObs=0, cheered=false, burst=false, lean=0, camShake=0;
+var rvZ=0, rvX=0, rvLane=0, rvSpeed=0, rvLaneT=0, rvGap=0, rvLean=0, rvPark=0, stopPos=0;
+var rvSurge=0, rvPhase=0, rvPhaseT=0;
 var arrowFlash=[0,0];
 
 function reset(){
@@ -648,6 +686,9 @@ function reset(){
   boostAmt=0; t=0; finishT=0; wobble=0; collected=0; dingStep=0; slotFilled=0;
   flyers=[]; parts=[]; confetti=[]; ptrStar=0; ptrObs=0;
   cheered=false; burst=false; lean=0; camShake=0; arrowFlash=[0,0];
+  rvLane=(Math.random()<0.5?0:2); rvX=LANES[rvLane]; rvZ=PLZ+1200;
+  rvSpeed=BASE; rvLaneT=2.5; rvGap=1200; rvLean=0; stopPos=0;
+  rvSurge=0; rvPhase=0; rvPhaseT=5;
   slotPop=[]; for(var i=0;i<SLOTS;i++) slotPop.push(0);
   buildTrack();
 }
@@ -712,13 +753,18 @@ function update(dt){
       var ob=obsList[ptrObs++];
       if(!ob.hit && Math.abs(ob.lane-playerX)<0.40) hitObstacle(ob);
     }
-    if(pz>=archZ){ state='finish'; finishT=0; }
+    if(pz>=archZ){
+      state='finish'; finishT=0;
+      stopPos=archZ+1200-PLZ;
+      rvPark=archZ+1900;
+      rvLane=(playerX<0)?2:0;
+    }
   }
   else if(state==='finish'){
     finishT+=dt;
-    speed*=Math.pow(0.03,dt);
-    if(speed<20) speed=0;
-    position+=speed*dt;
+    var prevPos=position;
+    position+=(stopPos-position)*Math.min(1,dt*2.6);
+    speed=(position-prevPos)/Math.max(dt,0.0001);
     A.engine(clamp(1-finishT*0.8,0,1),0.7);
     if(!cheered&&finishT>0.85){ cheered=true; A.cheer(); }
     if(!burst&&finishT>0.85){ burst=true; spawnConfetti(170,true); }
@@ -728,6 +774,66 @@ function update(dt){
     speed+=(0-speed)*Math.min(1,dt*4);
     A.engine(0.45,0.72);
   }
+
+  // ---- the rival ----
+  var pzr=position+PLZ;
+  var gapPrev=rvGap;
+  rvGap=rvZ-pzr;
+  if(state==='play'){
+    // picks its line: a lane clear of the player whenever it is coming past
+    rvLaneT-=dt;
+    if(rvLaneT<=0){
+      if(rvGap<600||rvPhase===2){
+        rvLaneT=0.85;
+        var opts=[0,1,2].filter(function(i){ return i!==laneIdx; });
+        opts.sort(function(a,b){ return Math.abs(a-rvLane)-Math.abs(b-rvLane); });
+        rvLane=opts[0];
+      }else{
+        rvLaneT=2.2+Math.random()*2.6;
+        rvLane=clamp(rvLane+(Math.random()<0.5?-1:1),0,2);
+      }
+    }
+    // races in phases: hold a lead, ease off, then charge back past
+    rvPhaseT-=dt;
+    if(rvPhase===0){                                     // holding a lead
+      if(rvPhaseT<=0){ rvPhase=1; rvPhaseT=7; }
+    }else if(rvPhase===1){                               // easing off, player comes through
+      if(rvGap<-1300||rvPhaseT<=0){ rvPhase=2; rvPhaseT=8; }
+    }else{                                               // charging back past
+      if(rvGap>1500||rvPhaseT<=0){ rvPhase=0; rvPhaseT=5+Math.random()*4; }
+    }
+    if(rvGap<-2600&&rvPhase!==2){ rvPhase=2; rvPhaseT=8; }   // player got away, give chase
+    rvSurge=(rvPhase===2)?1:0;
+
+    var want=BASE*(1+Math.sin(t*0.45)*0.04);   // matches the player's cruise, so it stays in view
+    if(rvPhase===1)      want=BASE*0.78;    // drops back
+    else if(rvPhase===2) want=BASE*1.50;    // the overtaking run
+    else if(rvGap<-3000) want=BASE*1.45;    // dropped behind, works its way back up
+    else if(rvGap>1800)  want=BASE*0.88;    // holds a visible lead, never runs away
+    if(archZ-pzr<18000) want=Math.min(want,speed*0.80);   // tires near the line
+    rvSpeed+=(want-rvSpeed)*Math.min(1,dt*1.6);
+    var room=(archZ-500)-rvZ;           // eases to a halt at the line rather than freezing
+    if(room<1800) rvSpeed=Math.min(rvSpeed,Math.max(0,room)*2.6);
+    rvZ+=rvSpeed*dt;
+    rvZ=Math.min(rvZ,archZ-500);        // the child always takes the flag
+    rvGap=rvZ-pzr;
+    if(gapPrev>0&&rvGap<=0){                // player just went past
+      A.pass();
+      for(var pi=0;pi<12;pi++){
+        var pa=Math.random()*6.2832;
+        parts.push({x:kartScreenX()+(Math.random()-0.5)*220,y:560,
+          vx:Math.cos(pa)*170,vy:Math.sin(pa)*150-90,
+          r:6+Math.random()*11,life:0.5+Math.random()*0.4,age:0,col:'#ffe27a'});
+      }
+    } else if(gapPrev<0&&rvGap>=0) A.swoosh();
+  } else if(state==='finish'){
+    rvSurge=0; rvPhase=0;
+    rvSpeed*=Math.pow(0.04,dt);
+    rvZ+=(rvPark-rvZ)*Math.min(1,dt*2.2);
+  }
+  var rvxp=rvX;
+  rvX+=(LANES[rvLane]-rvX)*Math.min(1,dt*5);
+  rvLean+=((((rvX-rvxp)/Math.max(dt,0.001))*0.9)-rvLean)*Math.min(1,dt*8);
 
   // lane glide
   var px=playerX;
@@ -844,6 +950,7 @@ function render(){
   drawBackground(HZ);
 
   var maxy=H, x=0, dx=-(base.curve*basePct), n, s, plCurveX=null;
+  var rvSegIdx=Math.floor(rvZ/SEGL), rvPct=(rvZ%SEGL)/SEGL, rvCurveX=null;
   var visible=[];
   for(n=0;n<DRAW;n++){
     s=segments[baseIdx+n];
@@ -852,6 +959,7 @@ function render(){
     project(s.p1, playerX*CAMFOL*ROADW - x,      camY, position);
     project(s.p2, playerX*CAMFOL*ROADW - x - dx, camY, position);
     if(baseIdx+n===plSeg.index) plCurveX=x+dx*plPct;
+    if(baseIdx+n===rvSegIdx)    rvCurveX=x+dx*rvPct;
     x+=dx; dx+=s.curve;
     visible.push(s);
     if(s.p1.camera.z<=CAMD || s.p2.screen.y>=s.p1.screen.y || s.p2.screen.y>=maxy) continue;
@@ -861,9 +969,19 @@ function render(){
     maxy=s.p2.screen.y;
   }
 
+  var rvProj=null, rzc=rvZ-position;
+  if(rvCurveX!==null&&rzc>420){
+    var rsg=seg(rvSegIdx), rsc=CAMD/rzc;
+    var ry=lerp(rsg.p1.world.y,rsg.p2.world.y,rvPct);
+    rvProj={ x:W/2 + rsc*(rvX*ROADW - playerX*CAMFOL*ROADW + rvCurveX)*W/2,
+             y:HZ  - rsc*(ry-camY)*H/2,
+             s:rsc*W/2 };
+  }
+
   // sprites: far to near so nearer things overlap
   for(n=visible.length-1;n>=0;n--){
     s=visible[n];
+    if(rvProj&&baseIdx+n===rvSegIdx) drawRival(rvProj,s.clip,fogAt(n/DRAW));
     if(s.p1.camera.z<760) continue;
     for(var i=0;i<s.sprites.length;i++){
       var sp=s.sprites[i];
